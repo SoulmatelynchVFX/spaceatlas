@@ -157,6 +157,37 @@ stderr 在结束时输出一行 JSON，沿用本文的版本和路径/单应用�
 
 CSV 完整退出 0，部分结果或参数错误退出 2，中断退出 130，输出失败退出 1。参数错误、扫描前中断或输出失败可能没有 JSON 状态；输出过程中中断也不保证最后一条 CSV 或状态完整。不能仅凭表头或已有行判断完整性。
 
+## NDJSON 文件事件
+
+`--format ndjson` 是与默认 JSON 文档不同的流式容器，遵循同一 `schema_version: 1` 字段约定。用于 `--path` / `--app`，不用于 `--list-apps`。每个计入的去重普通文件输出一行，按遍历顺序，不保证排序；硬链接仅输出首次计入的路径。每行独立 JSON，不包含表头或空行。
+
+| 字段 | JSON 类型 | 含义 |
+| --- | --- | --- |
+| `schema_version` | integer | 当前为 `1`；约束此事件及结束报告的兼容语义。 |
+| `event` | string | 固定为 `file`。 |
+| `path` | string | 计入文件的绝对路径；Unicode、引号及换行通过 JSON 转义保留。 |
+| `size` | integer | 非负逻辑字节数，不代表实际分配量或可清理容量。 |
+| `modified` | string or null | UTC ISO 8601，六位小数、Z 后缀；不可表示或缺失为 null。 |
+
+## NDJSON 结束事件
+
+正常结束或可报告的部分扫描仅输出一个结束事件，位于所有文件事件之后；空目录仅有此行。新可选字段可增补；解析器应忽略未知字段。新增事件类型时解析器不得把未知事件当作 file 或结束信号；改变既有字段含义/类型须按版本兼容约定处理。
+
+| 字段 | JSON 类型 | 含义 |
+| --- | --- | --- |
+| `schema_version` | integer | 当前为 `1`，与 report.schema_version 一致。 |
+| `event` | string | 固定为 `summary`。 |
+| `exit_code` | integer | 输出此事件时预计退出码：0 完整、2 部分、130 扫描中断；最终进程退出状态仍须检查。 |
+| `report` | object | 与对应路径/应用 JSON 报告相同的字段，额外包含 ndjson 诊断对象。 |
+
+`report.ndjson` 包含非负整数 `files_written`（成功写入并刷新到输出流的文件事件数）与 `missing_modified`（修改时间不可表示的计数）。后者非零使 report.partial 为真，完整扫描退出码由 0 变为 2；应用内层 scan.partial 仍只反映扫描缺口。正常情况下 files_written 等于路径报告 file_count 或应用报告 scan.file_count；中断发生在记录形成与写出之间时可能更少，仍明确标记部分结果。
+
+`report` 保留跳过/错误/排除及停止原因；启用可选排行/分组时也保留相应字段。被拒绝的应用目标输出 summary（report.scan 为 null、partial 为真），不伪造空扫描。默认 JSON 与 CSV 不新增 ndjson 字段。
+
+扫描期间 Ctrl+C：在可以安全形成报告时输出 partial=true、exit_code=130 的结束事件。初始化/注册表读取阶段中断没有结束事件；记录写入或刷新时中断退出 130，不追加 summary，因为尾行可能已损坏。写入/刷新失败退出 1，不重试或继续扫描。若 summary 已写入但最终刷新失败，行内 exit_code 可能仍为 0，进程却非零，不能仅凭结束行认定成功。强制终止也可能留下无结束事件或不完整行。
+
+完整流必须满足：每行可解析、最后一个事件为 summary、report.partial=false、结束事件 exit_code=0 且进程退出码为 0。即便已有每行均合法，缺 summary 也不完整。输出采用 ASCII JSON 转义（同时兼容 UTF-8），每条事件换行并立即刷新；底层 Windows 文本流可能使用 CRLF。刷新不是磁盘持久化保证。
+
 ## 退出码与无报告情形
 
 下表为默认 JSON 模式；CSV 模式见上节。

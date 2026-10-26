@@ -25,6 +25,8 @@ python -m storage_inspector --app registry.REPLACE_WITH_APP_ID
 
 为 `--path` 或 `--app` 添加 `--format csv` 可逐条输出文件明细 `path,size,modified`：绝对路径、逻辑字节数、UTC 修改时间。stdout 只包含 CSV，带版本的扫描状态写入 stderr；空目录仅输出表头，部分扫描返回非零退出码。不能同时使用扩展名/目录汇总或大文件排行；保存与导入注意事项见 [CSV 使用说明](docs/storage-inspector.md#csv-文件明细)。
 
+添加 `--format ndjson` 可边扫描边输出 JSON 文件事件，最后一行是包含完整诊断的 `summary` 事件；空目录仅输出汇总。必须同时检查结束事件、`report.partial` 与进程退出码，不能把已有文件行当成完整结果。输出不缓存全部文件明细，但硬链接去重索引仍随文件身份数量增长；见 [NDJSON 使用说明](docs/storage-inspector.md#ndjson-流式事件)。
+
 JSON 报告顶层包含 `schema_version: 1` 和 `report_type`，分别标识字段规范版本与报告类型（路径统计、应用清单或单应用扫描）。完整字段、空值及兼容约定见 [报告字段规范](docs/schema.md)。部分结果和扫描中断报告也带版本信息；参数错误等未生成报告的情况仍只输出错误提示。
 
 应用清单保留同名软件的不同版本和安装位置；读取注册表失败时返回错误明细和部分结果标记，不将缺失信息当作完整清单。

@@ -8,6 +8,7 @@ import sys
 
 from .app_scan import inspect_app
 from .csv_output import CsvFileWriter, CsvOutputError
+from .ndjson_output import NdjsonFileWriter, NdjsonOutputError, NdjsonOutputInterrupted
 from .scanner import directory_stats, validate_limits, validate_top_files, validate_exclude_dirs
 from .windows_inventory import discover_inventory
 
@@ -28,8 +29,8 @@ def _main(argv=None):
                         help="跳过同名子目录（不区分大小写，可重复指定，不接受路径或通配符）")
     parser.add_argument("--by-extension", action="store_true", help="按文件名最后一个扩展名汇总占用，不读取正文")
     parser.add_argument("--by-directory", action="store_true", help="按一级子目录汇总已计入文件，根目录直属文件单列")
-    parser.add_argument("--format", choices=("json", "csv"), default="json",
-                        help="输出格式；csv 仅输出文件明细，状态报告写入 stderr")
+    parser.add_argument("--format", choices=("json", "csv", "ndjson"), default="json",
+                        help="输出格式；csv 状态写 stderr；ndjson 逐行输出文件事件及结束汇总")
     args = parser.parse_args(argv)
     try:
         validate_limits(args.max_files, args.max_seconds)
@@ -37,6 +38,8 @@ def _main(argv=None):
         excluded_names = validate_exclude_dirs(args.exclude_dir)
     except ValueError as error:
         parser.error(str(error))
+    if args.format == "ndjson" and args.list_apps:
+        parser.error("--format ndjson 仅用于 --path 或 --app，不能用于 --list-apps")
     if args.format == "csv":
         if args.list_apps:
             parser.error("--format csv 仅用于 --path 或 --app，不能用于 --list-apps")
@@ -60,7 +63,9 @@ def _main(argv=None):
             parser.error("--list-apps 和 --app 仅支持 Windows")
         inventory = discover_inventory()
     csv_output = CsvFileWriter(sys.stdout) if args.format == "csv" else None
-    scan_options = {"on_file": csv_output.write_file} if csv_output is not None else {}
+    ndjson_output = NdjsonFileWriter(sys.stdout, SCHEMA_VERSION) if args.format == "ndjson" else None
+    file_output = csv_output if csv_output is not None else ndjson_output
+    scan_options = {"on_file": file_output.write_file} if file_output is not None else {}
     if args.app is not None:
         report_type = "application_scan"
         report = inspect_app(inventory, args.app, max_files=args.max_files,
@@ -93,6 +98,8 @@ def _main(argv=None):
         csv_output.finish(report, sys.stderr)
         if csv_output.missing_modified and status == 0:
             status = 2
+    elif ndjson_output is not None:
+        status = ndjson_output.finish(report, status)
     else:
         # ASCII escaping also makes redirected output usable with legacy Windows encodings.
         print(json.dumps(report, ensure_ascii=True, indent=2))
@@ -105,6 +112,12 @@ def main(argv=None):
     except CsvOutputError as error:
         print(f"CSV 输出失败，结果可能不完整：{error}", file=sys.stderr)
         return 1
+    except NdjsonOutputError as error:
+        print(f"NDJSON 输出失败，结果可能不完整：{error}", file=sys.stderr)
+        return 1
+    except NdjsonOutputInterrupted:
+        print("NDJSON 输出已中断，最后一行可能不完整，未追加结束汇总。", file=sys.stderr)
+        return 130
     except KeyboardInterrupt:
         # Inventory discovery and output may be interrupted before a report is ready.
         print("操作已中断，未输出完整报告。", file=sys.stderr)

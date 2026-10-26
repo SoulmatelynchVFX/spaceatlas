@@ -15,7 +15,7 @@ python -m storage_inspector --path "D:\Example"
 python -m storage_inspector --app registry.REPLACE_WITH_APP_ID
 ```
 
-结果为标准输出中的 JSON，不自动保存报告。不带参数只显示用法。程序不读取文件正文，不删除、移动文件或调用外部服务。
+默认结果为标准输出中的 JSON，也可显式选择 CSV 或 NDJSON，不自动保存报告。不带参数只显示用法。程序不读取文件正文，不删除、移动文件或调用外部服务。
 
 每份 JSON 报告的顶层带有 `schema_version`（当前为整数 `1`）和 `report_type`：`--path` 为 `path_scan`，`--list-apps` 为 `application_inventory`，`--app` 为 `application_scan`。版本适用于整个文档，内层 `scan` 不重复添加版本字段。字段类型、空值、兼容规则及错误输出边界见 [报告字段规范](schema.md)。
 
@@ -146,9 +146,29 @@ CSV 的逗号、引号、换行由标准库转义，保留路径原值。**CSV �
 
 格式实现参考 Python 3.11 [csv](https://docs.python.org/3.11/library/csv.html) 与 [datetime](https://docs.python.org/3.11/library/datetime.html) 文档。
 
+## NDJSON 流式事件
+
+```powershell
+python -m storage_inspector --path "D:\Example" --format ndjson
+python -m storage_inspector --app registry.REPLACE_WITH_APP_ID --format ndjson --max-files 10000
+```
+
+仅用于显式 `--path` / `--app`，不接受 `--list-apps`。stdout 逐行输出带 schema_version 的 file 事件（path、size、modified），每行写完立即刷新；最后输出 summary（exit_code、report），空目录只有 summary。普通运行 stderr 为空，参数或输出异常写入 stderr。格式和精确字段见 [事件契约](schema.md#ndjson-文件事件)。
+
+修改时间是 UTC ISO 8601，未知为 null，并令 report.partial=true、退出码 2。已有跳过/排除、访问错误、扫描上限和中断语义保留；一次 Ctrl+C 的可报告扫描中断结束事件为 130。输出自身中断不追加 summary，避免把损坏尾行与汇总拼接；写入/刷新失败为 1。参数错误为 2，初始化中断为 130，这些情形可能没有任何事件。
+
+消费者必须检查最后的 summary、report.partial、事件 exit_code 与最终进程退出码，不能只逐行解析成功就认为完整。末次刷新失败时即便看到 exit_code=0 的 summary 也必须以失败进程状态为准。按遍历顺序输出，不排序；不读取文件正文、不二次读取元数据、不缓存全部文件记录。可与 --max-files、--max-seconds、--exclude-dir 及三个排行/分组选项组合；分组与排行只在结束报告中出现，沿用原口径。
+
+**内存边界**：仅文件事件输出缓存不随记录数量积累，单行大小仍取决于路径长度；现有精确硬链接去重 seen 集合随不同文件身份数量增长，目录遍历栈随深度增长，开启分组/排行也有各自开销。不是整体常量内存扫描，应用模式读取清单也需要内存。
+
+内存测试分三层：用按需生成的普通字符串隔离输出器，验证 1000/100000 条事件的缓存边界；用故意保留全部事件的错误实现确认同一断言能失败；再分别记录原生路径处理下关闭/开启输出的扫描基线，以及唯一 inode 去重场景的峰值。pathlib 的进程级字符串驻留表也可能扩容，不能把无 inode 的扫描总峰值当成输出器独占内存，或把不同运行的峰值相减当作精确归属。测试不禁用字符串驻留、不创建十万个真实文件，也不作 NTFS 实际内存承诺。
+
+不自动保存，尚无 --output；需要重定向时请明确选择扫描树外的输出路径，保留 stderr 与退出码，不使用 2>&1 混合输出。标准流通过 ASCII JSON 转义保留 Unicode 路径，消费者按 JSON 解码；shell 文本重定向可能另行改变文件编码。报告包含绝对路径及应用信息，分享前脱敏。
+
 ## 验证
 
 ```powershell
+python -m unittest discover -s tests -p "test_ndjson*.py" -v
 python -m unittest discover -s tests -p "test_csv_output.py" -v
 python -m unittest discover -s tests -p "test_report_schema.py" -v
 python -m unittest discover -s tests -p "test_storage_inspector.py" -v
