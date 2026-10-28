@@ -23,6 +23,8 @@ python -m storage_inspector --app registry.REPLACE_WITH_APP_ID
 
 默认输出为 JSON，不自动保存或上传。统计会跳过遇到的链接及离线属性项，对硬链接去重，并报告访问失败。文件逻辑长度不等于磁盘实际分配量，更不代表可清理容量；本版不汇总应用全部占用。
 
+显式添加 `--output "D:\Reports\scan.json"` 可将报告保存为 UTF-8 文件，支持 JSON、CSV、NDJSON；父目录须已存在且输出必须位于扫描范围之外。默认拒绝覆盖，只有 `--force` 才替换已有普通单链接文件；拒绝扫描源、目录、链接/重解析点等目标。先写临时报告再替换，写出失败不预先清空旧报告；部分扫描仍保存部分报告并返回非零状态。详见 [安全保存报告](docs/storage-inspector.md#安全保存报告)。
+
 为 `--path` 或 `--app` 添加 `--format csv` 可逐条输出文件明细 `path,size,modified`：绝对路径、逻辑字节数、UTC 修改时间。stdout 只包含 CSV，带版本的扫描状态写入 stderr；空目录仅输出表头，部分扫描返回非零退出码。不能同时使用扩展名/目录汇总或大文件排行；保存与导入注意事项见 [CSV 使用说明](docs/storage-inspector.md#csv-文件明细)。
 
 添加 `--format ndjson` 可边扫描边输出 JSON 文件事件，最后一行是包含完整诊断的 `summary` 事件；空目录仅输出汇总。必须同时检查结束事件、`report.partial` 与进程退出码，不能把已有文件行当成完整结果。输出不缓存全部文件明细，但硬链接去重索引仍随文件身份数量增长；见 [NDJSON 使用说明](docs/storage-inspector.md#ndjson-流式事件)。

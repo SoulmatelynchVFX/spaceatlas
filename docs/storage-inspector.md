@@ -15,7 +15,7 @@ python -m storage_inspector --path "D:\Example"
 python -m storage_inspector --app registry.REPLACE_WITH_APP_ID
 ```
 
-默认结果为标准输出中的 JSON，也可显式选择 CSV 或 NDJSON，不自动保存报告。不带参数只显示用法。程序不读取文件正文，不删除、移动文件或调用外部服务。
+默认结果为标准输出中的 JSON，也可显式选择 CSV 或 NDJSON，不自动保存报告。不带参数只显示用法。程序不读取扫描文件正文，不清理扫描源或调用外部服务；仅在显式 --output 时创建报告，并清理自身临时报告，--force 可替换指定的已有报告目标。
 
 每份 JSON 报告的顶层带有 `schema_version`（当前为整数 `1`）和 `report_type`：`--path` 为 `path_scan`，`--list-apps` 为 `application_inventory`，`--app` 为 `application_scan`。版本适用于整个文档，内层 `scan` 不重复添加版本字段。字段类型、空值、兼容规则及错误输出边界见 [报告字段规范](schema.md)。
 
@@ -142,7 +142,7 @@ CSV 仅用于 `--path` / `--app`，与 `--by-extension`、`--by-directory`、`--
 
 CSV 的逗号、引号、换行由标准库转义，保留路径原值。**CSV 引号转义不等于电子表格公式注入防护**；导入时明确选择 UTF-8，并将路径列按文本处理，不对不可信文件名启用公式或自动转换。
 
-当前无自动保存或 `--output` 选项。使用 shell 重定向时将 stdout 和 stderr 分开，不使用 `2>&1`；检查退出码及状态。输出目标必须放在扫描树之外，避免 shell 提前创建报告文件后被计入扫描。Windows PowerShell 的文本重定向可能改变编码，需核对所用 shell 的行为。报告含本机绝对路径，勿直接提交或公开。
+可显式使用 `--output` 保存 CSV，状态仍写入 stderr；详见下方安全保存报告。自行使用 shell 重定向时将 stdout 和 stderr 分开，不使用 `2>&1`；检查退出码及状态。输出目标必须放在扫描树之外，避免 shell 提前创建报告文件后被计入扫描。Windows PowerShell 的文本重定向可能改变编码，需核对所用 shell 的行为，且不受 --output 的覆盖保护。报告含本机绝对路径，勿直接提交或公开。
 
 格式实现参考 Python 3.11 [csv](https://docs.python.org/3.11/library/csv.html) 与 [datetime](https://docs.python.org/3.11/library/datetime.html) 文档。
 
@@ -163,11 +163,37 @@ python -m storage_inspector --app registry.REPLACE_WITH_APP_ID --format ndjson -
 
 内存测试分三层：用按需生成的普通字符串隔离输出器，验证 1000/100000 条事件的缓存边界；用故意保留全部事件的错误实现确认同一断言能失败；再分别记录原生路径处理下关闭/开启输出的扫描基线，以及唯一 inode 去重场景的峰值。pathlib 的进程级字符串驻留表也可能扩容，不能把无 inode 的扫描总峰值当成输出器独占内存，或把不同运行的峰值相减当作精确归属。测试不禁用字符串驻留、不创建十万个真实文件，也不作 NTFS 实际内存承诺。
 
-不自动保存，尚无 --output；需要重定向时请明确选择扫描树外的输出路径，保留 stderr 与退出码，不使用 2>&1 混合输出。标准流通过 ASCII JSON 转义保留 Unicode 路径，消费者按 JSON 解码；shell 文本重定向可能另行改变文件编码。报告包含绝对路径及应用信息，分享前脱敏。
+不自动保存；可使用下节 --output 安全写出，或自行重定向到扫描树外。保留 stderr 与退出码，不使用 2>&1 混合输出。标准流通过 ASCII JSON 转义保留 Unicode 路径，消费者按 JSON 解码；shell 文本重定向可能另行改变文件编码，且不受 --output 的覆盖保护。报告包含绝对路径及应用信息，分享前脱敏。
+
+## 安全保存报告
+
+```powershell
+# D:\Reports 必须已存在；不能放在 D:\Example 的扫描范围内
+python -m storage_inspector --path "D:\Example" --output "D:\Reports\scan.json"
+python -m storage_inspector --path "D:\Example" --format csv --output "D:\Reports\files.csv"
+python -m storage_inspector --path "D:\Example" --format ndjson --output "D:\Reports\events.ndjson"
+# 只有确定可替换该报告时才使用 --force
+python -m storage_inspector --path "D:\Example" --output "D:\Reports\scan.json" --force
+```
+
+`--output PATH` 仅由用户显式指定，支持三种格式；后缀不决定格式，仍由 `--format` 决定。JSON 的应用清单也可导出，CSV/NDJSON 仍不支持清单模式。文件编码固定 UTF-8、无 BOM，stdout 不重复报告；CSV 的版本化状态仍在 stderr。`--force` 单独使用是参数错误（退出 2）。未指定 --output 时保持原有标准流行为。
+
+安全规则：
+
+- 父目录须已存在，不自动建目录；输出目标及父目录不能是链接、Windows 重解析点、离线/召回项，目标不能是目录、特殊文件或多硬链接文件。
+- 保守要求输出位于扫描根及其所有后代之外，即使目标不存在也拒绝扫描树内路径；扫描整个卷时须将报告放在另一卷。应用模式以声明的安装目录为边界。这样最终文件和同目录临时文件都不进入本次扫描，也不用从源统计中隐式扣除它们。
+- 默认拒绝覆盖。显式 --force 只允许替换范围外的普通单链接文件，不识别其内容是否确实是旧报告，使用者应核对路径。扫描源即使 --force 也不会覆盖。
+- Windows 拒绝网络/设备路径、备用数据流、末尾点/空格等歧义路径；拒绝含 .. 的输出路径，不展开环境变量。
+- 先在目标同目录写随机临时文件，刷新并同步后关闭，再检查父目录身份和目标元数据。新目标使用不覆盖的发布操作；已有目标使用同目录替换。权限、写入、同步或替换失败返回 1，旧目标不会因预先截断而丢失。临时文件正常退出时清理；清理失败会报告，强制杀进程可能留下 `.spaceatlas-*.tmp`。
+
+部分扫描（上限、跳过、权限缺口）仍保存完整结构的部分报告，退出 2；可报告的遍历中断保存 partial 报告并退出 130。初始化中断或输出本身中断不提交临时报告，已有目标保留。因此有文件不等于扫描成功；须核对 partial、NDJSON summary 和最终退出码。CSV 状态可能在最终文件替换前写出，若随后保存失败，以进程失败状态和错误提示为准。
+
+这些检查针对本机正常使用和可检测的并发变化，不是面对恶意进程持续替换路径的安全沙箱。检查与文件系统操作间仍有竞争窗口，尤其 --force 不提供跨进程锁；导出期间不要由其他程序移动父目录或修改目标。文件系统/权限不支持所需操作时失败，不降级为直接清空旧文件；不承诺断电后的目录持久性或保留旧目标 ACL。扫描只读边界保持不变。
 
 ## 验证
 
 ```powershell
+python -m unittest discover -s tests -p "test_report_output.py" -v
 python -m unittest discover -s tests -p "test_ndjson*.py" -v
 python -m unittest discover -s tests -p "test_csv_output.py" -v
 python -m unittest discover -s tests -p "test_report_schema.py" -v

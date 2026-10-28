@@ -1,4 +1,4 @@
-"""Explicit, read-only entry points; no automatic disk scan or report persistence."""
+"""Explicit metadata scans and opt-in report export; no automatic disk scan."""
 import argparse
 from dataclasses import asdict
 import json
@@ -11,6 +11,7 @@ from .csv_output import CsvFileWriter, CsvOutputError
 from .ndjson_output import NdjsonFileWriter, NdjsonOutputError, NdjsonOutputInterrupted
 from .scanner import directory_stats, validate_limits, validate_top_files, validate_exclude_dirs
 from .windows_inventory import discover_inventory
+from .report_output import ReportOutput, ReportOutputError
 
 
 SCHEMA_VERSION = 1
@@ -31,7 +32,11 @@ def _main(argv=None):
     parser.add_argument("--by-directory", action="store_true", help="按一级子目录汇总已计入文件，根目录直属文件单列")
     parser.add_argument("--format", choices=("json", "csv", "ndjson"), default="json",
                         help="输出格式；csv 状态写 stderr；ndjson 逐行输出文件事件及结束汇总")
+    parser.add_argument("--output", type=Path, help="保存到扫描范围外的指定文件（UTF-8），默认拒绝覆盖")
+    parser.add_argument("--force", action="store_true", help="配合 --output 替换已有普通单链接文件")
     args = parser.parse_args(argv)
+    if args.force and args.output is None:
+        parser.error("--force 必须与 --output 同时使用")
     try:
         validate_limits(args.max_files, args.max_seconds)
         validate_top_files(args.top_files)
@@ -58,12 +63,26 @@ def _main(argv=None):
         parser.error("--by-extension 仅用于 --path 或 --app，不能用于 --list-apps")
     if args.list_apps and args.by_directory:
         parser.error("--by-directory 仅用于 --path 或 --app，不能用于 --list-apps")
+    inventory = None
     if args.list_apps or args.app is not None:
         if os.name != "nt":
             parser.error("--list-apps 和 --app 仅支持 Windows")
         inventory = discover_inventory()
-    csv_output = CsvFileWriter(sys.stdout) if args.format == "csv" else None
-    ndjson_output = NdjsonFileWriter(sys.stdout, SCHEMA_VERSION) if args.format == "ndjson" else None
+    if args.output is not None:
+        roots = [args.path] if args.path is not None else []
+        if args.app is not None:
+            roots = [app.install_location for app in inventory.applications
+                     if app.app_id == args.app and app.install_location]
+        with ReportOutput(args.output, roots, force=args.force) as destination:
+            status = _render(args, inventory, excluded_names, destination.stream)
+            destination.commit()
+        return status
+    return _render(args, inventory, excluded_names, sys.stdout)
+
+
+def _render(args, inventory, excluded_names, output):
+    csv_output = CsvFileWriter(output) if args.format == "csv" else None
+    ndjson_output = NdjsonFileWriter(output, SCHEMA_VERSION) if args.format == "ndjson" else None
     file_output = csv_output if csv_output is not None else ndjson_output
     scan_options = {"on_file": file_output.write_file} if file_output is not None else {}
     if args.app is not None:
@@ -102,13 +121,16 @@ def _main(argv=None):
         status = ndjson_output.finish(report, status)
     else:
         # ASCII escaping also makes redirected output usable with legacy Windows encodings.
-        print(json.dumps(report, ensure_ascii=True, indent=2))
+        print(json.dumps(report, ensure_ascii=True, indent=2), file=output)
     return status
 
 
 def main(argv=None):
     try:
         return _main(argv)
+    except ReportOutputError as error:
+        print(f"报告保存失败：{error}", file=sys.stderr)
+        return 1
     except CsvOutputError as error:
         print(f"CSV 输出失败，结果可能不完整：{error}", file=sys.stderr)
         return 1
