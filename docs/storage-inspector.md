@@ -127,6 +127,8 @@ JSON 会包含本机应用信息和绝对路径，不要直接提交或公开。
 
 ## CSV 文件明细
 
+**区分两种中断**：遍历目录时中断，保留已完整写出的行并输出 partial 扫描状态，退出 130；CSV 数据行写出过程中中断，则最后一行可能损坏，不再输出扫描状态，退出 130。使用 `--output` 时后者丢弃临时报告，旧目标（即使指定 `--force`）不被替换，新目标不创建；终端或 shell 重定向中已写出的半行无法撤回，不应当作可用报告。此保护不改变正常遍历中断保存部分报告的行为。
+
 ```powershell
 python -m storage_inspector --path "D:\Example" --format csv
 python -m storage_inspector --app registry.REPLACE_WITH_APP_ID --format csv --max-files 10000
@@ -194,6 +196,7 @@ python -m storage_inspector --path "D:\Example" --output "D:\Reports\scan.json" 
 
 ```powershell
 python -m unittest discover -s tests -p "test_report_output.py" -v
+python -m unittest discover -s tests -p "test_output_interrupt_contract.py" -v
 python -m unittest discover -s tests -p "test_ndjson*.py" -v
 python -m unittest discover -s tests -p "test_csv_output.py" -v
 python -m unittest discover -s tests -p "test_report_schema.py" -v

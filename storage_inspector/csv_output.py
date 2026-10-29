@@ -8,6 +8,10 @@ class CsvOutputError(RuntimeError):
     """The destination failed, not a file being scanned."""
 
 
+class CsvOutputInterrupted(RuntimeError):
+    """A row may be torn; do not treat this as a reportable scan interrupt."""
+
+
 class CsvFileWriter:
     def __init__(self, output):
         self.output = output
@@ -30,6 +34,10 @@ class CsvFileWriter:
             self.missing_modified += 1
         try:
             self.writer.writerow((str(path), info.st_size, modified))
+        except KeyboardInterrupt as error:
+            # Escape the scanner's traversal-interrupt handler so staged reports
+            # are discarded instead of replacing an existing destination.
+            raise CsvOutputInterrupted("CSV row write interrupted") from error
         except (OSError, UnicodeError) as error:
             raise CsvOutputError(str(error)) from error
         self.rows_written += 1

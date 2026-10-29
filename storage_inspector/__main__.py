@@ -7,7 +7,7 @@ from pathlib import Path
 import sys
 
 from .app_scan import inspect_app
-from .csv_output import CsvFileWriter, CsvOutputError
+from .csv_output import CsvFileWriter, CsvOutputError, CsvOutputInterrupted
 from .ndjson_output import NdjsonFileWriter, NdjsonOutputError, NdjsonOutputInterrupted
 from .scanner import directory_stats, validate_limits, validate_top_files, validate_exclude_dirs
 from .windows_inventory import discover_inventory
@@ -134,6 +134,9 @@ def main(argv=None):
     except CsvOutputError as error:
         print(f"CSV 输出失败，结果可能不完整：{error}", file=sys.stderr)
         return 1
+    except CsvOutputInterrupted:
+        print("CSV 输出已中断，最后一行可能不完整，未生成扫描状态或保存新报告。", file=sys.stderr)
+        return 130
     except NdjsonOutputError as error:
         print(f"NDJSON 输出失败，结果可能不完整：{error}", file=sys.stderr)
         return 1
