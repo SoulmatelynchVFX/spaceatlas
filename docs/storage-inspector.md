@@ -192,10 +192,19 @@ python -m storage_inspector --path "D:\Example" --output "D:\Reports\scan.json" 
 
 这些检查针对本机正常使用和可检测的并发变化，不是面对恶意进程持续替换路径的安全沙箱。检查与文件系统操作间仍有竞争窗口，尤其 --force 不提供跨进程锁；导出期间不要由其他程序移动父目录或修改目标。文件系统/权限不支持所需操作时失败，不降级为直接清空旧文件；不承诺断电后的目录持久性或保留旧目标 ACL。扫描只读边界保持不变。
 
+## 字节数与 MiB 展示
+
+路径报告以及应用报告的非空 `scan` 同时包含 `logical_bytes` 精确整数和 `logical_mib` 展示字符串。1 MiB = 1048576 字节（不是 MB），固定三位小数并四舍五入，半值向上；不通过浮点数进行换算。零字节显示 `"0.000"`，非零但很小的文件也可能显示相同值；只用原字节数进行大小判断和计算。
+
+例如 1572864 字节对应 `"1.500"`，65536 字节对应 `"0.063"`。新增字段只属于扫描汇总，不改变 CSV 的 path,size,modified 列、NDJSON file 事件或排行/分组字段。CSV 在 stderr 状态中显示，NDJSON 在最后的 summary.report 中显示；--output 保存时同样适用。
+
+这两个值都是已计入范围的逻辑长度，部分扫描不会估算遗漏容量。逻辑长度不等于磁盘实际分配量，更不是可清理容量；应用模式只统计声明安装目录，清单模式不扫描、不生成大小。字段和兼容规则见 [单位契约](schema.md#单位与统计口径)。
+
 ## 验证
 
 ```powershell
 python -m unittest discover -s tests -p "test_report_output.py" -v
+python -m unittest discover -s tests -p "test_scan_report.py" -v
 python -m unittest discover -s tests -p "test_output_interrupt_contract.py" -v
 python -m unittest discover -s tests -p "test_ndjson*.py" -v
 python -m unittest discover -s tests -p "test_csv_output.py" -v

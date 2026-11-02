@@ -12,6 +12,7 @@ from .ndjson_output import NdjsonFileWriter, NdjsonOutputError, NdjsonOutputInte
 from .scanner import directory_stats, validate_limits, validate_top_files, validate_exclude_dirs
 from .windows_inventory import discover_inventory
 from .report_output import ReportOutput, ReportOutputError
+from .scan_report import SCAN_NOTE, scan_report
 
 
 SCHEMA_VERSION = 1
@@ -108,8 +109,7 @@ def _render(args, inventory, excluded_names, output):
                                 max_seconds=args.max_seconds, top_files=args.top_files,
                                 exclude_dirs=excluded_names, by_extension=args.by_extension,
                                 by_directory=args.by_directory, **scan_options)
-        report = {**asdict(stats), "partial": stats.partial,
-                  "note": "逻辑长度不是磁盘实际分配量或可清理容量；扫描期间变化可能造成误差。"}
+        report = {**scan_report(stats), "note": SCAN_NOTE}
         status = 130 if stats.stop_reason == "interrupted" else 2 if stats.partial else 0
     # The top-level version governs the complete document, including nested objects.
     report = {"schema_version": SCHEMA_VERSION, "report_type": report_type, **report}

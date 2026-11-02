@@ -94,7 +94,8 @@ class ReportSchemaTests(unittest.TestCase):
             self.assertEqual(status, expected)
             self.assert_metadata(report, "application_scan")
             self.assertEqual(report["application"], asdict(app))
-            self.assertEqual(report["scan"], {**asdict(stats), "partial": stats.partial})
+            self.assertEqual(report["scan"], {**asdict(stats), "partial": stats.partial,
+                                             "logical_mib": "0.000"})
             self.assertEqual(report["partial"], reason is not None)
             self.assertEqual(report["scope"], "install_location_only")
             self.assertEqual(set(report), (self.documented_fields("公共顶层字段")
@@ -130,7 +131,8 @@ class ReportSchemaTests(unittest.TestCase):
         self.assertTrue(errors.getvalue())
 
     def test_documented_fields_match_dataclass_serialization(self):
-        self.assertEqual(self.documented_fields("扫描对象"), set(asdict(DirectoryStats("sample"))) | {"partial"})
+        self.assertEqual(self.documented_fields("扫描对象"),
+                         set(asdict(DirectoryStats("sample"))) | {"partial", "logical_mib"})
         self.assertEqual(self.documented_fields("应用条目"), set(asdict(InstalledApp("sample", "Example"))))
         self.assertEqual(self.documented_fields("应用清单字段"), set(asdict(InventoryResult())) | {"source"})
 

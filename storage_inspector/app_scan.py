@@ -6,6 +6,7 @@ import stat
 
 from .scanner import directory_stats, should_skip, validate_limits, validate_top_files, validate_exclude_dirs
 from .windows_inventory import InventoryResult
+from .scan_report import SCAN_NOTE, scan_report
 
 
 def valid_install_location(value: str) -> bool:
@@ -35,7 +36,7 @@ def inspect_app(inventory: InventoryResult, app_id: str, *, max_files=None, max_
         "partial": inventory.partial,
         "inventory": {"partial": inventory.partial, "error_count": inventory.error_count,
                       "errors": inventory.errors, "missing_locations": inventory.missing_locations},
-        "note": "仅统计注册表声明的安装目录，可能包含共享文件；不等于应用全部数据或可清理容量。",
+        "note": "仅统计注册表声明的安装目录，可能包含共享文件；不等于应用全部数据。" + SCAN_NOTE,
     }
 
     def unavailable(message):
@@ -62,6 +63,6 @@ def inspect_app(inventory: InventoryResult, app_id: str, *, max_files=None, max_
                             top_files=top_files, exclude_dirs=excluded_names, by_extension=by_extension,
                             by_directory=by_directory,
                             **({"on_file": on_file} if on_file is not None else {}))
-    report["scan"] = {**asdict(stats), "partial": stats.partial}
+    report["scan"] = scan_report(stats)
     report["partial"] = inventory.partial or stats.partial
     return report
