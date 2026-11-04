@@ -42,6 +42,22 @@ python -m storage_inspector --app registry.REPLACE_WITH_APP_ID --max-seconds 5
 
 时长为软限制：在遍历步骤之间检查，不能中断已阻塞的系统调用。目录按需逐项枚举，提前停止会关闭已打开的目录迭代器。不同遍历顺序可能得到不同的部分结果；本版不提供断点续扫。
 
+### 限制扫描深度
+
+```powershell
+python -m storage_inspector --path "D:\Example" --max-depth 1 --by-directory
+python -m storage_inspector --path "D:\Example" --max-depth 2 --format ndjson
+```
+
+`--max-depth N` 接受非负整数，仅用于 --path/--app，不用于应用清单；省略时保持无限制。根目标深度为 0，直属条目为 1，每级加 1。深度 N 的文件可计入，深度 N 的目录只读取自身元数据，不打开、不访问更深条目。
+
+- 根为目录时 N=0 不打开根目录，文件数/字节数为 0，但 partial=true、退出 2，不表示空目录。根为普通单文件时 N=0 仍统计它。
+- N=1 计入根直属文件，不进入一级子目录；N=2 可计入一级子目录直属文件。边界目录即使实际上为空也保守标记未展开，不能为了确认空而越界枚举。
+- 报告新增 max_depth（省略时 null）及 depth_limited_directories（遇到但因深度未展开的普通目录数）。该计数非零使 partial=true、正常结束退出 2；不估算未访问后代数或容量。没有遇到被截断目录且无其他缺口时仍可完整退出 0。
+- --by-directory 只是把实际计入文件归组，不扩大深度范围；大文件排行、扩展名汇总、硬链接去重沿用同一范围。排除目录和链接/离线跳过先分类，不重复算为深度截断。
+- 深度限制继续扫描其他允许的分支，不设置 stop_reason；数量、时长上限或中断的全局停止原因照常记录，中断仍退出 130。
+- JSON、CSV stderr 状态、NDJSON summary 以及 --output 保存均使用相同字段；文件明细格式不变。应用模式的边界以选中安装目录为根，不扩大到其他目录。
+
 ### 大文件排行
 
 ```powershell
@@ -213,6 +229,7 @@ python -m unittest discover -s tests -p "test_storage_inspector.py" -v
 python -m unittest discover -s tests -p "test_inventory.py" -v
 python -m unittest discover -s tests -p "test_app_scan.py" -v
 python -m unittest discover -s tests -p "test_scan_limits.py" -v
+python -m unittest discover -s tests -p "test_max_depth.py" -v
 python -m unittest discover -s tests -p "test_scan_interrupt.py" -v
 python -m unittest discover -s tests -p "test_top_files.py" -v
 python -m unittest discover -s tests -p "test_exclude_dirs.py" -v

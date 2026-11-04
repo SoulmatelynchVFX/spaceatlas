@@ -53,6 +53,8 @@ JSON 报告顶层包含 `schema_version: 1` 和 `report_type`，分别标识字�
 
 扫描结果现在提供跳过原因计数和最多 100 条路径明细，并报告省略条数，便于核对链接、离线/召回属性项和特殊文件造成的缺口。明细只解释已遇到的跳过项，不估算漏扫大小，也不列举未进入目录的后代。
 
+添加 `--max-depth N` 可限制遍历深度：显式根为 0，直属条目为 1；深度 N 的文件可计入，目录不再打开。`--max-depth 1` 只统计根目录直属文件，不进入子目录；`--by-directory` 不扩大上限。未展开目录通过 `depth_limited_directories` 和 `partial` 明确报告，不冒充零占用。详见 [深度限制](docs/storage-inspector.md#限制扫描深度)。
+
 ## 为什么做 SpaceAtlas
 
 电脑上的空间往往散落在安装目录、AppData、ProgramData、文档、下载和其他磁盘中。单看文件夹大小，很难回答几个实际问题：

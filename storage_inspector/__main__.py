@@ -13,6 +13,7 @@ from .scanner import directory_stats, validate_limits, validate_top_files, valid
 from .windows_inventory import discover_inventory
 from .report_output import ReportOutput, ReportOutputError
 from .scan_report import SCAN_NOTE, scan_report
+from .scanner import validate_max_depth
 
 
 SCHEMA_VERSION = 1
@@ -26,6 +27,7 @@ def _main(argv=None):
     action.add_argument("--app", metavar="APP_ID", help="按清单 ID 只统计该应用声明的安装目录")
     parser.add_argument("--max-files", type=int, help="扫描至多计入指定数量的文件，必须为正整数")
     parser.add_argument("--max-seconds", type=float, help="扫描时长软限制（秒），必须为有限正数")
+    parser.add_argument("--max-depth", type=int, help="扫描深度硬上限（非负整数）；根为 0，边界目录不展开")
     parser.add_argument("--top-files", type=int, help="列出已计入文件中逻辑长度最大的前 N 项，必须为正整数")
     parser.add_argument("--exclude-dir", action="append", metavar="NAME",
                         help="跳过同名子目录（不区分大小写，可重复指定，不接受路径或通配符）")
@@ -40,6 +42,7 @@ def _main(argv=None):
         parser.error("--force 必须与 --output 同时使用")
     try:
         validate_limits(args.max_files, args.max_seconds)
+        validate_max_depth(args.max_depth)
         validate_top_files(args.top_files)
         excluded_names = validate_exclude_dirs(args.exclude_dir)
     except ValueError as error:
@@ -54,7 +57,7 @@ def _main(argv=None):
                                 ("--top-files", args.top_files is not None)):
             if enabled:
                 parser.error(f"--format csv 不能与 {option} 同时使用")
-    if args.list_apps and (args.max_files is not None or args.max_seconds is not None):
+    if args.list_apps and (args.max_files is not None or args.max_seconds is not None or args.max_depth is not None):
         parser.error("扫描限制仅用于 --path 或 --app，不能用于 --list-apps")
     if args.list_apps and args.top_files is not None:
         parser.error("--top-files 仅用于 --path 或 --app，不能用于 --list-apps")
@@ -86,6 +89,8 @@ def _render(args, inventory, excluded_names, output):
     ndjson_output = NdjsonFileWriter(output, SCHEMA_VERSION) if args.format == "ndjson" else None
     file_output = csv_output if csv_output is not None else ndjson_output
     scan_options = {"on_file": file_output.write_file} if file_output is not None else {}
+    if args.max_depth is not None:
+        scan_options["max_depth"] = args.max_depth
     if args.app is not None:
         report_type = "application_scan"
         report = inspect_app(inventory, args.app, max_files=args.max_files,

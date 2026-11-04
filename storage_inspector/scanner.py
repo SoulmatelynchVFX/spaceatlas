@@ -37,10 +37,13 @@ class DirectoryStats:
     skip_reason_counts: dict[str, int] = field(default_factory=dict)
     skip_details: list[dict] = field(default_factory=list)
     skip_details_omitted: int = 0
+    max_depth: int | None = None
+    depth_limited_directories: int = 0
 
     @property
     def partial(self):
-        return bool(self.error_count or self.skipped or self.stop_reason or self.excluded_directories)
+        return bool(self.error_count or self.skipped or self.stop_reason or
+                    self.excluded_directories or self.depth_limited_directories)
 
     def record_error(self, path, error):
         self.error_count += 1
@@ -80,6 +83,11 @@ def validate_limits(max_files=None, max_seconds=None):
         raise ValueError("max_seconds 必须是有限正数")
 
 
+def validate_max_depth(max_depth=None):
+    if max_depth is not None and (type(max_depth) is not int or max_depth < 0):
+        raise ValueError("max_depth 必须是非负整数")
+
+
 def validate_top_files(top_files=None):
     if top_files is not None and (type(top_files) is not int or top_files <= 0):
         raise ValueError("top_files 必须是正整数")
@@ -100,18 +108,20 @@ def validate_exclude_dirs(exclude_dirs=None):
 
 def directory_stats(path: Path, *, max_files=None, max_seconds=None, top_files=None,
                     exclude_dirs=None, by_extension=False, by_directory=False,
-                    on_file=None) -> DirectoryStats:
+                    on_file=None, max_depth=None) -> DirectoryStats:
     validate_limits(max_files, max_seconds)
+    validate_max_depth(max_depth)
     validate_top_files(top_files)
     excluded_names = validate_exclude_dirs(exclude_dirs)
     deadline = time.monotonic() + max_seconds if max_seconds is not None else None
     # abspath normalizes the supplied path without resolving symlinks.
     root = Path(os.path.abspath(path))
-    result = DirectoryStats(str(root), exclude_dirs=excluded_names)
+    result = DirectoryStats(str(root), exclude_dirs=excluded_names, max_depth=max_depth)
     excluded_lookup = set(excluded_names)
     # Keep only active directory iterators, rather than collecting a wide directory
     # before examining its files. Close every iterator on early termination too.
-    stack = [(root, iter((root,)))]
+    # The third value is the depth of entries yielded by this iterator.
+    stack = [(root, iter((root,)), 0)]
     seen = set()
     largest = []
     extensions = {}
@@ -124,7 +134,7 @@ def directory_stats(path: Path, *, max_files=None, max_seconds=None, top_files=N
             if max_files is not None and result.file_count >= max_files:
                 result.stop_reason = "max_files"
                 break
-            parent, entries = stack[-1]
+            parent, entries, depth = stack[-1]
             try:
                 entry = next(entries)
             except (StopIteration, OSError) as error:
@@ -148,7 +158,11 @@ def directory_stats(path: Path, *, max_files=None, max_seconds=None, top_files=N
                     if current != root and current.name.casefold() in excluded_lookup:
                         result.excluded_directories += 1
                         continue
-                    stack.append((current, os.scandir(current)))
+                    if max_depth is not None and depth >= max_depth:
+                        # Unopened contents are unknown, not zero-sized.
+                        result.depth_limited_directories += 1
+                        continue
+                    stack.append((current, os.scandir(current), depth + 1))
                 elif stat.S_ISREG(info.st_mode):
                     identity = (info.st_dev, info.st_ino)
                     if info.st_ino and identity in seen:
@@ -197,7 +211,7 @@ def directory_stats(path: Path, *, max_files=None, max_seconds=None, top_files=N
         # Preserve observations without mistaking an interrupted walk for completion.
         result.stop_reason = "interrupted"
     finally:
-        for _, entries in reversed(stack):
+        for _, entries, _ in reversed(stack):
             close = getattr(entries, "close", None)
             if close:
                 close()

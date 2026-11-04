@@ -37,6 +37,8 @@
 | `error_count` | integer | 扫描读取错误总数，不受明细上限影响。 |
 | `errors` | array of object | 前 100 条扫描错误，结构见“扫描错误”；数组长度可能小于总数。 |
 | `stop_reason` | string or null | `max_files`、`max_seconds`、`interrupted`；没有提前停止则为 `null`。 |
+| `max_depth` | integer or null | 用户指定的非负深度上限；根目标深度 0，null 表示无限制。 |
+| `depth_limited_directories` | integer | 因深度达到上限而未打开的普通目录数，包括可能的根目录；不估算其中的文件数/字节数。 |
 | `largest_files` | array of object | 开启 `--top-files` 时的前 N 个已计入文件，结构见“大文件条目”。 |
 | `excluded_directories` | integer | 实际遇到并按目录名排除的普通目录数，不包含未访问后代。 |
 | `exclude_dirs` | array of string | 规范化、去重、排序后的目录排除名称；可以有规则但没有命中。 |
@@ -45,9 +47,11 @@
 | `skip_reason_counts` | object | 原因字符串到计数的映射；键对应“跳过明细”的 reason，未发生的原因不输出。 |
 | `skip_details` | array of object | 按遇到顺序保留前 100 个跳过项，结构见“跳过明细”。 |
 | `skip_details_omitted` | integer | 超过明细上限而省略的跳过项数量。 |
-| `partial` | boolean | 有读取错误、跳过项、实际排除目录或提前停止时为真；硬链接正常去重不会单独使它为真。 |
+| `partial` | boolean | 有读取错误、跳过项、实际排除目录、深度截断目录或提前停止时为真；硬链接正常去重不会单独使它为真。 |
 
 `skipped = sum(skip_reason_counts.values()) = len(skip_details) + skip_details_omitted`。启用对应分组时，组内 `logical_bytes` / `file_count` 之和等于扫描对象中的总值；只代表已观测范围。`partial: false` 也不意味着扫描是原子快照。
+
+深度是相对显式根目标的路径层级，根为 0、直属条目为 1。深度 N 的普通文件可计入，深度 N 的普通目录不调用 scandir、不访问其后代元数据；即使事实上为空也保守计一次 depth_limited_directories，因为未打开无法确认。单文件根在 N=0 仍可统计。达到目录深度边界不会停止其他分支，因此不占用 stop_reason；其非零计数独立使 partial=true、正常结束退出 2。全局数量/时长上限或中断仍保留原 stop_reason。链接/离线跳过及目录排除先于深度截断分类，不重复计数；目录分组仅包含实际计入的文件，不扩大深度边界。CSV 状态及 NDJSON summary 同样带这两个字段，文件明细不变；schema_version 仍为 1。
 
 ## 单位与统计口径
 
