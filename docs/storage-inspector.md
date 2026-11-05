@@ -216,7 +216,15 @@ python -m storage_inspector --path "D:\Example" --output "D:\Reports\scan.json" 
 
 这两个值都是已计入范围的逻辑长度，部分扫描不会估算遗漏容量。逻辑长度不等于磁盘实际分配量，更不是可清理容量；应用模式只统计声明安装目录，清单模式不扫描、不生成大小。字段和兼容规则见 [单位契约](schema.md#单位与统计口径)。
 
-## 验证
+## 最小文件阈值
+
+`python -m storage_inspector --path "C:\Example" --min-size 10M` 只计入逻辑长度 **大于等于** 10 MiB 的普通文件。无后缀为字节；K/M/G（不区分大小写）分别乘以 1024、1048576、1073741824；例如 `500K` 为 512000 字节。不接受小数、负数、正号、空格、KB/MB、科学计数或其他后缀。省略参数与 `0` 的计入口径相同，零字节文件仍计入；报告 min_size 分别为 null / 0。
+
+支持 --path 和 --app，不支持 --list-apps。过滤后总量、扩展名/一级目录汇总、排行及 CSV/NDJSON 文件明细使用相同口径。过滤文件不占 max_files 计入名额；大量小文件仍会访问元数据，可另设 max_seconds。max_depth 和 exclude-dir 仍限制访问范围，不估计被截断或排除目录里的过滤数量。
+
+报告增加 min_size、size_filtered_files、size_filtered_bytes（逻辑字节数）。硬链接先去重再按首次观测的大小分类，重复路径不反复增加过滤量。只要实际过滤至少一个文件，partial=true、正常退出 2；没有命中过滤则可完整退出 0。扫描中断/错误/输出失败仍沿用原规则。被过滤文件不触发 on_file，也不会读取正文。CLI 单位解析与 Python API 分开：API min_size 仅接受非负整数或 None。
+
+## 验证命令
 
 ```powershell
 python -m unittest discover -s tests -p "test_report_output.py" -v
@@ -230,6 +238,7 @@ python -m unittest discover -s tests -p "test_inventory.py" -v
 python -m unittest discover -s tests -p "test_app_scan.py" -v
 python -m unittest discover -s tests -p "test_scan_limits.py" -v
 python -m unittest discover -s tests -p "test_max_depth.py" -v
+python -m unittest discover -s tests -p "test_min_size.py" -v
 python -m unittest discover -s tests -p "test_scan_interrupt.py" -v
 python -m unittest discover -s tests -p "test_top_files.py" -v
 python -m unittest discover -s tests -p "test_exclude_dirs.py" -v

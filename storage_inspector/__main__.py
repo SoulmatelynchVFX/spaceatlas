@@ -13,7 +13,7 @@ from .scanner import directory_stats, validate_limits, validate_top_files, valid
 from .windows_inventory import discover_inventory
 from .report_output import ReportOutput, ReportOutputError
 from .scan_report import SCAN_NOTE, scan_report
-from .scanner import validate_max_depth
+from .scanner import validate_max_depth, parse_min_size
 
 
 SCHEMA_VERSION = 1
@@ -28,6 +28,8 @@ def _main(argv=None):
     parser.add_argument("--max-files", type=int, help="扫描至多计入指定数量的文件，必须为正整数")
     parser.add_argument("--max-seconds", type=float, help="扫描时长软限制（秒），必须为有限正数")
     parser.add_argument("--max-depth", type=int, help="扫描深度硬上限（非负整数）；根为 0，边界目录不展开")
+    parser.add_argument("--min-size", type=parse_min_size,
+                        help="只计入逻辑大小不少于阈值的文件；整数为字节，K/M/G 为 1024 进制")
     parser.add_argument("--top-files", type=int, help="列出已计入文件中逻辑长度最大的前 N 项，必须为正整数")
     parser.add_argument("--exclude-dir", action="append", metavar="NAME",
                         help="跳过同名子目录（不区分大小写，可重复指定，不接受路径或通配符）")
@@ -61,6 +63,8 @@ def _main(argv=None):
         parser.error("扫描限制仅用于 --path 或 --app，不能用于 --list-apps")
     if args.list_apps and args.top_files is not None:
         parser.error("--top-files 仅用于 --path 或 --app，不能用于 --list-apps")
+    if args.list_apps and args.min_size is not None:
+        parser.error("--min-size 仅用于 --path 或 --app，不能用于 --list-apps")
     if args.list_apps and args.exclude_dir is not None:
         parser.error("--exclude-dir 仅用于 --path 或 --app，不能用于 --list-apps")
     if args.list_apps and args.by_extension:
@@ -91,6 +95,8 @@ def _render(args, inventory, excluded_names, output):
     scan_options = {"on_file": file_output.write_file} if file_output is not None else {}
     if args.max_depth is not None:
         scan_options["max_depth"] = args.max_depth
+    if args.min_size is not None:
+        scan_options["min_size"] = args.min_size
     if args.app is not None:
         report_type = "application_scan"
         report = inspect_app(inventory, args.app, max_files=args.max_files,

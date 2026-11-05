@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 import heapq
 import math
 import os
+import re
 from pathlib import Path
 import stat
 import time
@@ -39,11 +40,15 @@ class DirectoryStats:
     skip_details_omitted: int = 0
     max_depth: int | None = None
     depth_limited_directories: int = 0
+    min_size: int | None = None
+    size_filtered_files: int = 0
+    size_filtered_bytes: int = 0
 
     @property
     def partial(self):
         return bool(self.error_count or self.skipped or self.stop_reason or
-                    self.excluded_directories or self.depth_limited_directories)
+                    self.excluded_directories or self.depth_limited_directories or
+                    self.size_filtered_files)
 
     def record_error(self, path, error):
         self.error_count += 1
@@ -88,6 +93,20 @@ def validate_max_depth(max_depth=None):
         raise ValueError("max_depth 必须是非负整数")
 
 
+def validate_min_size(min_size=None):
+    if min_size is not None and (type(min_size) is not int or min_size < 0):
+        raise ValueError("min_size 必须是非负整数字节数")
+
+
+def parse_min_size(value):
+    """CLI bytes or binary K/M/G units, with no float conversion."""
+    if not isinstance(value, str) or re.fullmatch(r"[0-9]+[KMGkmg]?", value) is None:
+        raise ValueError("min-size 必须为非负整数，可带 K/M/G 后缀（1024 进制）")
+    suffix = value[-1].upper()
+    power = {"K": 1, "M": 2, "G": 3}.get(suffix, 0)
+    return int(value[:-1] if power else value) * (1024 ** power)
+
+
 def validate_top_files(top_files=None):
     if top_files is not None and (type(top_files) is not int or top_files <= 0):
         raise ValueError("top_files 必须是正整数")
@@ -108,15 +127,17 @@ def validate_exclude_dirs(exclude_dirs=None):
 
 def directory_stats(path: Path, *, max_files=None, max_seconds=None, top_files=None,
                     exclude_dirs=None, by_extension=False, by_directory=False,
-                    on_file=None, max_depth=None) -> DirectoryStats:
+                    on_file=None, max_depth=None, min_size=None) -> DirectoryStats:
     validate_limits(max_files, max_seconds)
     validate_max_depth(max_depth)
+    validate_min_size(min_size)
     validate_top_files(top_files)
     excluded_names = validate_exclude_dirs(exclude_dirs)
     deadline = time.monotonic() + max_seconds if max_seconds is not None else None
     # abspath normalizes the supplied path without resolving symlinks.
     root = Path(os.path.abspath(path))
-    result = DirectoryStats(str(root), exclude_dirs=excluded_names, max_depth=max_depth)
+    result = DirectoryStats(str(root), exclude_dirs=excluded_names, max_depth=max_depth,
+                            min_size=min_size)
     excluded_lookup = set(excluded_names)
     # Keep only active directory iterators, rather than collecting a wide directory
     # before examining its files. Close every iterator on early termination too.
@@ -170,6 +191,10 @@ def directory_stats(path: Path, *, max_files=None, max_seconds=None, top_files=N
                         continue
                     if info.st_ino:
                         seen.add(identity)
+                    if min_size is not None and info.st_size < min_size:
+                        result.size_filtered_files += 1
+                        result.size_filtered_bytes += info.st_size
+                        continue
                     result.logical_bytes += info.st_size
                     result.file_count += 1
                     if by_directory:
