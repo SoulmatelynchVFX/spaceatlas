@@ -43,12 +43,16 @@ class DirectoryStats:
     min_size: int | None = None
     size_filtered_files: int = 0
     size_filtered_bytes: int = 0
+    include_ext: list[str] = field(default_factory=list)
+    exclude_ext: list[str] = field(default_factory=list)
+    extension_filtered_files: int = 0
+    extension_filtered_bytes: int = 0
 
     @property
     def partial(self):
         return bool(self.error_count or self.skipped or self.stop_reason or
                     self.excluded_directories or self.depth_limited_directories or
-                    self.size_filtered_files)
+                    self.size_filtered_files or self.extension_filtered_files)
 
     def record_error(self, path, error):
         self.error_count += 1
@@ -112,6 +116,30 @@ def validate_top_files(top_files=None):
         raise ValueError("top_files 必须是正整数")
 
 
+def validate_extension_filters(include_ext=None, exclude_ext=None):
+    """Normalize last-suffix filters; a single dot denotes no suffix."""
+    if include_ext is not None and exclude_ext is not None:
+        raise ValueError("include_ext 与 exclude_ext 不能同时指定")
+    def normalize(values):
+        if values is None:
+            return []
+        if not isinstance(values, (list, tuple)) or not values:
+            raise ValueError("扩展名必须是非空列表；用 . 表示无扩展名")
+        result = set()
+        for value in values:
+            if not isinstance(value, str) or not value:
+                raise ValueError("扩展名不能为空；用 . 表示无扩展名")
+            if value == ".":
+                result.add(value)
+                continue
+            suffix = value[1:] if value.startswith(".") else value
+            if re.fullmatch(r"[\w+-]+", suffix) is None:
+                raise ValueError("扩展名只接受单个后缀，不接受路径、空格、通配符或多重后缀")
+            result.add("." + suffix.casefold())
+        return sorted(result)
+    return normalize(include_ext), normalize(exclude_ext)
+
+
 def validate_exclude_dirs(exclude_dirs=None):
     if exclude_dirs is None:
         return []
@@ -127,17 +155,20 @@ def validate_exclude_dirs(exclude_dirs=None):
 
 def directory_stats(path: Path, *, max_files=None, max_seconds=None, top_files=None,
                     exclude_dirs=None, by_extension=False, by_directory=False,
-                    on_file=None, max_depth=None, min_size=None) -> DirectoryStats:
+                    on_file=None, max_depth=None, min_size=None,
+                    include_ext=None, exclude_ext=None) -> DirectoryStats:
     validate_limits(max_files, max_seconds)
     validate_max_depth(max_depth)
     validate_min_size(min_size)
     validate_top_files(top_files)
+    included_exts, excluded_exts = validate_extension_filters(include_ext, exclude_ext)
     excluded_names = validate_exclude_dirs(exclude_dirs)
     deadline = time.monotonic() + max_seconds if max_seconds is not None else None
     # abspath normalizes the supplied path without resolving symlinks.
     root = Path(os.path.abspath(path))
     result = DirectoryStats(str(root), exclude_dirs=excluded_names, max_depth=max_depth,
-                            min_size=min_size)
+                            min_size=min_size, include_ext=included_exts, exclude_ext=excluded_exts)
+    included_lookup, excluded_ext_lookup = set(included_exts), set(excluded_exts)
     excluded_lookup = set(excluded_names)
     # Keep only active directory iterators, rather than collecting a wide directory
     # before examining its files. Close every iterator on early termination too.
@@ -191,6 +222,12 @@ def directory_stats(path: Path, *, max_files=None, max_seconds=None, top_files=N
                         continue
                     if info.st_ino:
                         seen.add(identity)
+                    extension = current.suffix.casefold() or "."
+                    if ((included_lookup and extension not in included_lookup)
+                            or extension in excluded_ext_lookup):
+                        result.extension_filtered_files += 1
+                        result.extension_filtered_bytes += info.st_size
+                        continue
                     if min_size is not None and info.st_size < min_size:
                         result.size_filtered_files += 1
                         result.size_filtered_bytes += info.st_size

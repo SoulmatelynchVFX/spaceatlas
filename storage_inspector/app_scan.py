@@ -7,7 +7,7 @@ import stat
 from .scanner import directory_stats, should_skip, validate_limits, validate_top_files, validate_exclude_dirs
 from .windows_inventory import InventoryResult
 from .scan_report import SCAN_NOTE, scan_report
-from .scanner import validate_max_depth, validate_min_size
+from .scanner import validate_max_depth, validate_min_size, validate_extension_filters
 
 
 def valid_install_location(value: str) -> bool:
@@ -25,11 +25,12 @@ def valid_install_location(value: str) -> bool:
 
 def inspect_app(inventory: InventoryResult, app_id: str, *, max_files=None, max_seconds=None,
                 top_files=None, exclude_dirs=None, by_extension=False, by_directory=False,
-                on_file=None, max_depth=None, min_size=None) -> dict:
+                on_file=None, max_depth=None, min_size=None, include_ext=None, exclude_ext=None) -> dict:
     validate_limits(max_files, max_seconds)
     validate_max_depth(max_depth)
     validate_min_size(min_size)
     validate_top_files(top_files)
+    included_exts, excluded_exts = validate_extension_filters(include_ext, exclude_ext)
     excluded_names = validate_exclude_dirs(exclude_dirs)
     report = {
         "requested_app_id": app_id,
@@ -67,6 +68,8 @@ def inspect_app(inventory: InventoryResult, app_id: str, *, max_files=None, max_
                             by_directory=by_directory,
                             **({"max_depth": max_depth} if max_depth is not None else {}),
                             **({"min_size": min_size} if min_size is not None else {}),
+                            **({"include_ext": included_exts} if included_exts else {}),
+                            **({"exclude_ext": excluded_exts} if excluded_exts else {}),
                             **({"on_file": on_file} if on_file is not None else {}))
     report["scan"] = scan_report(stats)
     report["partial"] = inventory.partial or stats.partial

@@ -224,6 +224,14 @@ python -m storage_inspector --path "D:\Example" --output "D:\Reports\scan.json" 
 
 报告增加 min_size、size_filtered_files、size_filtered_bytes（逻辑字节数）。硬链接先去重再按首次观测的大小分类，重复路径不反复增加过滤量。只要实际过滤至少一个文件，partial=true、正常退出 2；没有命中过滤则可完整退出 0。扫描中断/错误/输出失败仍沿用原规则。被过滤文件不触发 on_file，也不会读取正文。CLI 单位解析与 Python API 分开：API min_size 仅接受非负整数或 None。
 
+## 扩展名过滤
+
+`--include-ext txt --include-ext .CSV` 仅计入 txt/csv；`--exclude-ext .tmp` 排除 tmp。两类参数不能同时指定，均可重复，规范化后去重排序；不区分大小写，前导点可省略。用 `--include-ext .` 选择无后缀文件（如 README、.env）。只匹配最后后缀：archive.tar.gz 选择 gz，而不是 tar.gz；多重后缀、路径、通配符、空格和空值在扫描前报错。允许 Unicode 字母数字、下划线、加号和连字符，例如 `.资料`、`c++`。
+
+支持 --path/--app 和三种输出及保存，不用于 --list-apps。默认不筛选，零字节文件保留。普通文件先按身份硬链接去重，再扩展名、最后 min-size；同一身份以首次遇到的路径后缀决定计入或过滤，后续别名仅计 duplicates，跨后缀别名的结果可能受遍历顺序影响。目录名不参与后缀筛选，深度/目录排除/链接安全边界仍生效。
+
+报告新增 include_ext、exclude_ext、extension_filtered_files、extension_filtered_bytes；实际过滤标 partial 并正常退出 2，没有实际过滤不会仅因配置参数而 partial。与大小过滤不重复计数，所有汇总/排行和 CSV/NDJSON 文件明细只包含计入项。max-files 只限制计入数量，不限制遍历或过滤数，max-seconds 仍为全局软上限。不读取正文或推断真实文件类型。
+
 ## 验证命令
 
 ```powershell
@@ -239,6 +247,7 @@ python -m unittest discover -s tests -p "test_app_scan.py" -v
 python -m unittest discover -s tests -p "test_scan_limits.py" -v
 python -m unittest discover -s tests -p "test_max_depth.py" -v
 python -m unittest discover -s tests -p "test_min_size.py" -v
+python -m unittest discover -s tests -p "test_extension_filters.py" -v
 python -m unittest discover -s tests -p "test_scan_interrupt.py" -v
 python -m unittest discover -s tests -p "test_top_files.py" -v
 python -m unittest discover -s tests -p "test_exclude_dirs.py" -v

@@ -13,7 +13,7 @@ from .scanner import directory_stats, validate_limits, validate_top_files, valid
 from .windows_inventory import discover_inventory
 from .report_output import ReportOutput, ReportOutputError
 from .scan_report import SCAN_NOTE, scan_report
-from .scanner import validate_max_depth, parse_min_size
+from .scanner import validate_max_depth, parse_min_size, validate_extension_filters
 
 
 SCHEMA_VERSION = 1
@@ -33,6 +33,11 @@ def _main(argv=None):
     parser.add_argument("--top-files", type=int, help="列出已计入文件中逻辑长度最大的前 N 项，必须为正整数")
     parser.add_argument("--exclude-dir", action="append", metavar="NAME",
                         help="跳过同名子目录（不区分大小写，可重复指定，不接受路径或通配符）")
+    extensions = parser.add_mutually_exclusive_group()
+    extensions.add_argument("--include-ext", action="append", metavar="EXT",
+                            help="仅计入指定最后后缀，可重复；忽略大小写，. 表示无后缀")
+    extensions.add_argument("--exclude-ext", action="append", metavar="EXT",
+                            help="排除指定最后后缀，可重复；忽略大小写，. 表示无后缀")
     parser.add_argument("--by-extension", action="store_true", help="按文件名最后一个扩展名汇总占用，不读取正文")
     parser.add_argument("--by-directory", action="store_true", help="按一级子目录汇总已计入文件，根目录直属文件单列")
     parser.add_argument("--format", choices=("json", "csv", "ndjson"), default="json",
@@ -47,6 +52,7 @@ def _main(argv=None):
         validate_max_depth(args.max_depth)
         validate_top_files(args.top_files)
         excluded_names = validate_exclude_dirs(args.exclude_dir)
+        validate_extension_filters(args.include_ext, args.exclude_ext)
     except ValueError as error:
         parser.error(str(error))
     if args.format == "ndjson" and args.list_apps:
@@ -67,6 +73,8 @@ def _main(argv=None):
         parser.error("--min-size 仅用于 --path 或 --app，不能用于 --list-apps")
     if args.list_apps and args.exclude_dir is not None:
         parser.error("--exclude-dir 仅用于 --path 或 --app，不能用于 --list-apps")
+    if args.list_apps and (args.include_ext is not None or args.exclude_ext is not None):
+        parser.error("扩展名过滤仅用于 --path 或 --app，不能用于 --list-apps")
     if args.list_apps and args.by_extension:
         parser.error("--by-extension 仅用于 --path 或 --app，不能用于 --list-apps")
     if args.list_apps and args.by_directory:
@@ -97,6 +105,10 @@ def _render(args, inventory, excluded_names, output):
         scan_options["max_depth"] = args.max_depth
     if args.min_size is not None:
         scan_options["min_size"] = args.min_size
+    if args.include_ext is not None:
+        scan_options["include_ext"] = args.include_ext
+    if args.exclude_ext is not None:
+        scan_options["exclude_ext"] = args.exclude_ext
     if args.app is not None:
         report_type = "application_scan"
         report = inspect_app(inventory, args.app, max_files=args.max_files,
