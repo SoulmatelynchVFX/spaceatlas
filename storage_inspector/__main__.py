@@ -14,6 +14,7 @@ from .windows_inventory import discover_inventory
 from .report_output import ReportOutput, ReportOutputError
 from .scan_report import SCAN_NOTE, scan_report
 from .scanner import validate_max_depth, parse_min_size, validate_extension_filters
+from .path_glob import validate_exclude_patterns
 
 
 SCHEMA_VERSION = 1
@@ -33,6 +34,8 @@ def _main(argv=None):
     parser.add_argument("--top-files", type=int, help="列出已计入文件中逻辑长度最大的前 N 项，必须为正整数")
     parser.add_argument("--exclude-dir", action="append", metavar="NAME",
                         help="跳过同名子目录（不区分大小写，可重复指定，不接受路径或通配符）")
+    parser.add_argument("--exclude-pattern", action="append", metavar="GLOB",
+                        help="按根相对路径排除文件或目录，可重复；* 不跨目录，整段 ** 可跨层")
     extensions = parser.add_mutually_exclusive_group()
     extensions.add_argument("--include-ext", action="append", metavar="EXT",
                             help="仅计入指定最后后缀，可重复；忽略大小写，. 表示无后缀")
@@ -52,6 +55,7 @@ def _main(argv=None):
         validate_max_depth(args.max_depth)
         validate_top_files(args.top_files)
         excluded_names = validate_exclude_dirs(args.exclude_dir)
+        validate_exclude_patterns(args.exclude_pattern)
         validate_extension_filters(args.include_ext, args.exclude_ext)
     except ValueError as error:
         parser.error(str(error))
@@ -73,6 +77,8 @@ def _main(argv=None):
         parser.error("--min-size 仅用于 --path 或 --app，不能用于 --list-apps")
     if args.list_apps and args.exclude_dir is not None:
         parser.error("--exclude-dir 仅用于 --path 或 --app，不能用于 --list-apps")
+    if args.list_apps and args.exclude_pattern is not None:
+        parser.error("--exclude-pattern 仅用于 --path 或 --app，不能用于 --list-apps")
     if args.list_apps and (args.include_ext is not None or args.exclude_ext is not None):
         parser.error("扩展名过滤仅用于 --path 或 --app，不能用于 --list-apps")
     if args.list_apps and args.by_extension:
@@ -109,6 +115,8 @@ def _render(args, inventory, excluded_names, output):
         scan_options["include_ext"] = args.include_ext
     if args.exclude_ext is not None:
         scan_options["exclude_ext"] = args.exclude_ext
+    if args.exclude_pattern is not None:
+        scan_options["exclude_patterns"] = args.exclude_pattern
     if args.app is not None:
         report_type = "application_scan"
         report = inspect_app(inventory, args.app, max_files=args.max_files,

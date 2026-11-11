@@ -8,6 +8,8 @@ from pathlib import Path
 import stat
 import time
 
+from .path_glob import matches_any, validate_exclude_patterns
+
 
 # Reparse points include Windows junctions and many cloud placeholders.
 SKIP_ATTRIBUTE_REASONS = (
@@ -47,12 +49,16 @@ class DirectoryStats:
     exclude_ext: list[str] = field(default_factory=list)
     extension_filtered_files: int = 0
     extension_filtered_bytes: int = 0
+    exclude_patterns: list[str] = field(default_factory=list)
+    pattern_excluded_directories: int = 0
+    pattern_excluded_files: int = 0
 
     @property
     def partial(self):
         return bool(self.error_count or self.skipped or self.stop_reason or
                     self.excluded_directories or self.depth_limited_directories or
-                    self.size_filtered_files or self.extension_filtered_files)
+                    self.size_filtered_files or self.extension_filtered_files or
+                    self.pattern_excluded_directories or self.pattern_excluded_files)
 
     def record_error(self, path, error):
         self.error_count += 1
@@ -156,20 +162,28 @@ def validate_exclude_dirs(exclude_dirs=None):
 def directory_stats(path: Path, *, max_files=None, max_seconds=None, top_files=None,
                     exclude_dirs=None, by_extension=False, by_directory=False,
                     on_file=None, max_depth=None, min_size=None,
-                    include_ext=None, exclude_ext=None) -> DirectoryStats:
+                    include_ext=None, exclude_ext=None, exclude_patterns=None) -> DirectoryStats:
     validate_limits(max_files, max_seconds)
     validate_max_depth(max_depth)
     validate_min_size(min_size)
     validate_top_files(top_files)
     included_exts, excluded_exts = validate_extension_filters(include_ext, exclude_ext)
     excluded_names = validate_exclude_dirs(exclude_dirs)
+    normalized_patterns = validate_exclude_patterns(exclude_patterns)
     deadline = time.monotonic() + max_seconds if max_seconds is not None else None
     # abspath normalizes the supplied path without resolving symlinks.
     root = Path(os.path.abspath(path))
     result = DirectoryStats(str(root), exclude_dirs=excluded_names, max_depth=max_depth,
-                            min_size=min_size, include_ext=included_exts, exclude_ext=excluded_exts)
+                            min_size=min_size, include_ext=included_exts, exclude_ext=excluded_exts,
+                            exclude_patterns=normalized_patterns)
     included_lookup, excluded_ext_lookup = set(included_exts), set(excluded_exts)
     excluded_lookup = set(excluded_names)
+    patterns = tuple(tuple(pattern.split("/")) for pattern in normalized_patterns)
+
+    def excluded_path(current):
+        parts = current.relative_to(root).parts if current != root else (current.name,)
+        return matches_any(patterns, parts)
+
     # Keep only active directory iterators, rather than collecting a wide directory
     # before examining its files. Close every iterator on early termination too.
     # The third value is the depth of entries yielded by this iterator.
@@ -210,12 +224,19 @@ def directory_stats(path: Path, *, max_files=None, max_seconds=None, top_files=N
                     if current != root and current.name.casefold() in excluded_lookup:
                         result.excluded_directories += 1
                         continue
+                    if patterns and current != root and excluded_path(current):
+                        result.pattern_excluded_directories += 1
+                        continue
                     if max_depth is not None and depth >= max_depth:
                         # Unopened contents are unknown, not zero-sized.
                         result.depth_limited_directories += 1
                         continue
                     stack.append((current, os.scandir(current), depth + 1))
                 elif stat.S_ISREG(info.st_mode):
+                    # An excluded path must not hide an unexcluded hard-link alias.
+                    if patterns and excluded_path(current):
+                        result.pattern_excluded_files += 1
+                        continue
                     identity = (info.st_dev, info.st_ino)
                     if info.st_ino and identity in seen:
                         result.duplicates += 1

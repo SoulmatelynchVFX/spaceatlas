@@ -232,6 +232,20 @@ python -m storage_inspector --path "D:\Example" --output "D:\Reports\scan.json" 
 
 报告新增 include_ext、exclude_ext、extension_filtered_files、extension_filtered_bytes；实际过滤标 partial 并正常退出 2，没有实际过滤不会仅因配置参数而 partial。与大小过滤不重复计数，所有汇总/排行和 CSV/NDJSON 文件明细只包含计入项。max-files 只限制计入数量，不限制遍历或过滤数，max-seconds 仍为全局软上限。不读取正文或推断真实文件类型。
 
+## 路径通配符排除
+
+`--exclude-pattern GLOB` 可重复指定，任一规则命中即排除。模式锚定到显式扫描根的相对路径，`/` 和 `\` 都是路径分隔符，统一为 `/`，并用 Unicode 大小写折叠比较。`*` 匹配单段内零个或多个字符，`?` 匹配大小写折叠后的单个字符，整段 `**` 匹配零层或多层。`*.tmp` 只匹配根下同层名称，`**/*.tmp` 也匹配任意深度；`cache/**` 连 cache 目录本身一起排除。没有字符集合、花括号或转义语法。模式建议加引号，避免被 shell 提前展开。
+
+```powershell
+python -m storage_inspector --path 'C:\Example' --exclude-pattern 'cache/**' --exclude-pattern '**/*.tmp'
+```
+
+模式不触发额外遍历；只匹配当前已到达的普通文件或子目录。拒绝空模式、绝对/盘符/UNC 路径、空路径段、`.`、`..`、非整段 `**`、不支持的字符或末尾点/空格。无效参数在访问前拒绝。显式根目录自身不参与匹配；单文件目标按文件名匹配。链接、重解析点、离线项和元数据错误仍先走既有安全/错误分类。
+
+目录按 `--exclude-dir` → 通配符 → `--max-depth` 顺序判断，只记首个命中原因；排除的目录不会枚举后代。文件先按通配符排除路径，再硬链接去重、扩展名筛选、大小筛选；被排除的别名不会遮蔽未排除的别名。通配符文件数按路径计数，不估算遗漏字节、后代文件数或可清理容量。`--max-files` 只计入保留的文件，时长软上限不变。
+
+支持 `--path`、`--app` 及三种输出和保存，不用于 `--list-apps`。报告记录 `exclude_patterns`、`pattern_excluded_directories`、`pattern_excluded_files`；实际排除标 `partial` 并正常退出 2，无命中则保持原状态。排行、分组、CSV 文件行及 NDJSON 文件事件只包含计入项。默认不排除，不读取文件正文。
+
 ## 验证命令
 
 ```powershell
@@ -251,6 +265,7 @@ python -m unittest discover -s tests -p "test_extension_filters.py" -v
 python -m unittest discover -s tests -p "test_scan_interrupt.py" -v
 python -m unittest discover -s tests -p "test_top_files.py" -v
 python -m unittest discover -s tests -p "test_exclude_dirs.py" -v
+python -m unittest discover -s tests -p "test_exclude_patterns.py" -v
 python -m unittest discover -s tests -p "test_extension_summary.py" -v
 python -m unittest discover -s tests -p "test_directory_summary.py" -v
 python -m unittest discover -s tests -p "test_skip_details.py" -v

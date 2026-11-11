@@ -49,18 +49,23 @@
 | `largest_files` | array of object | 开启 `--top-files` 时的前 N 个已计入文件，结构见“大文件条目”。 |
 | `excluded_directories` | integer | 实际遇到并按目录名排除的普通目录数，不包含未访问后代。 |
 | `exclude_dirs` | array of string | 规范化、去重、排序后的目录排除名称；可以有规则但没有命中。 |
+| `exclude_patterns` | array of string | 以 `/` 分段、大小写折叠、去重排序的根相对路径模式；可以有规则但没有命中。 |
+| `pattern_excluded_directories` | integer | 实际遇到且因通配符而未展开的普通子目录数，不含已按 exclude_dirs 排除项或未知后代。 |
+| `pattern_excluded_files` | integer | 实际遇到且因通配符而未计入的普通文件路径数，先于硬链接去重、扩展名及大小筛选。 |
 | `extension_summary` | array of object | 开启 `--by-extension` 后的已计入文件分组，结构见“扩展名分组”。 |
 | `directory_summary` | array of object | 开启 `--by-directory` 后的一级目录分组，结构见“目录分组”。 |
 | `skip_reason_counts` | object | 原因字符串到计数的映射；键对应“跳过明细”的 reason，未发生的原因不输出。 |
 | `skip_details` | array of object | 按遇到顺序保留前 100 个跳过项，结构见“跳过明细”。 |
 | `skip_details_omitted` | integer | 超过明细上限而省略的跳过项数量。 |
-| `partial` | boolean | 有读取错误、跳过项、实际排除目录、大小/扩展名过滤文件、深度截断目录或提前停止时为真；硬链接正常去重不会单独使它为真。 |
+| `partial` | boolean | 有读取错误、跳过项、实际目录/路径排除、大小/扩展名过滤文件、深度截断目录或提前停止时为真；硬链接正常去重不会单独使它为真。 |
 
 `skipped = sum(skip_reason_counts.values()) = len(skip_details) + skip_details_omitted`。启用对应分组时，组内 `logical_bytes` / `file_count` 之和等于扫描对象中的总值；只代表已观测范围。`partial: false` 也不意味着扫描是原子快照。
 
 深度是相对显式根目标的路径层级，根为 0、直属条目为 1。深度 N 的普通文件可计入，深度 N 的普通目录不调用 scandir、不访问其后代元数据；即使事实上为空也保守计一次 depth_limited_directories，因为未打开无法确认。单文件根在 N=0 仍可统计。达到目录深度边界不会停止其他分支，因此不占用 stop_reason；其非零计数独立使 partial=true、正常结束退出 2。全局数量/时长上限或中断仍保留原 stop_reason。链接/离线跳过及目录排除先于深度截断分类，不重复计数；目录分组仅包含实际计入的文件，不扩大深度边界。CSV 状态及 NDJSON summary 同样带这两个字段，文件明细不变；schema_version 仍为 1。
 
 ## 单位与统计口径
+
+路径通配符在安全跳过之后匹配。子目录先按目录名排除，再按模式排除，最后判断深度截断；只记首个原因，不访问被排除目录的后代。显式根目录自身不匹配，单文件根按名称匹配。被排除文件路径不进入硬链接身份表，未排除别名仍可被计入。两个通配符排除计数只统计实际遇到的路径，不估算字节或遗漏后代数量。新增字段覆盖 JSON 扫描对象、CSV 状态和 NDJSON summary，文件列/事件不变，schema_version 保持 1。
 
 扩展名过滤支持单个最后后缀（如 .TXT/txt 统一为 .txt），单个 . 表示无后缀；README、.env 没有后缀，archive.tar.gz 归 .gz。按大小写折叠后的文件名最后后缀分类，不检查内容。安全跳过和目录边界先执行；普通文件先按身份去重，再扩展名过滤，最后 min-size，只有全部通过才计入总量/排行/分组/文件事件。同一身份首次观测的路径决定分类，后续仅计 duplicates；不同后缀的硬链接别名可能受遍历顺序影响，与已有首路径归属口径一致。实际过滤至少一项（包括零字节项）即 partial=true，正常退出 2；无实际过滤则可完整退出 0。新增四字段覆盖 JSON 扫描对象、CSV 状态、NDJSON summary，文件列/事件不变，schema_version 保持 1。
 
