@@ -27,7 +27,7 @@ def valid_install_location(value: str) -> bool:
 def inspect_app(inventory: InventoryResult, app_id: str, *, max_files=None, max_seconds=None,
                 top_files=None, exclude_dirs=None, by_extension=False, by_directory=False,
                 on_file=None, max_depth=None, min_size=None, include_ext=None, exclude_ext=None,
-                exclude_patterns=None) -> dict:
+                exclude_patterns=None, by_mtime=False) -> dict:
     validate_limits(max_files, max_seconds)
     validate_max_depth(max_depth)
     validate_min_size(min_size)
@@ -69,6 +69,7 @@ def inspect_app(inventory: InventoryResult, app_id: str, *, max_files=None, max_
     stats = directory_stats(path, max_files=max_files, max_seconds=max_seconds,
                             top_files=top_files, exclude_dirs=excluded_names, by_extension=by_extension,
                             by_directory=by_directory,
+                            **({"by_mtime": True} if by_mtime else {}),
                             **({"max_depth": max_depth} if max_depth is not None else {}),
                             **({"min_size": min_size} if min_size is not None else {}),
                             **({"include_ext": included_exts} if included_exts else {}),

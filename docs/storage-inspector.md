@@ -246,6 +246,17 @@ python -m storage_inspector --path 'C:\Example' --exclude-pattern 'cache/**' --e
 
 支持 `--path`、`--app` 及三种输出和保存，不用于 `--list-apps`。报告记录 `exclude_patterns`、`pattern_excluded_directories`、`pattern_excluded_files`；实际排除标 `partial` 并正常退出 2，无命中则保持原状态。排行、分组、CSV 文件行及 NDJSON 文件事件只包含计入项。默认不排除，不读取文件正文。
 
+## 修改时间分桶
+
+```powershell
+python -m storage_inspector --path "D:\Example" --by-mtime
+python -m storage_inspector --app registry.REPLACE_WITH_APP_ID --by-mtime --format ndjson
+```
+
+扫描开始时记录一次 UTC 参考时刻 `mtime_reference_utc`，以它减去文件的修改时间（mtime）计算时间差，每天按 24 小时算。正好 30 天进入 `30_to_lt_180d`，正好 180 天和 365 天进入 `180_to_365d`。晚于参考时刻进入 `future`。时间缺失、无法读取、非法或超出 UTC 日期范围时进入 `unknown`，保留已计入的文件数和字节数，并标记部分结果，正常结束时退出码为 2。文件元数据整体读取失败时仍记录扫描错误。
+
+`mtime_buckets` 的各桶汇总 `file_count` 和 `logical_bytes`，总和对应已计入文件，沿用同一次扫描的过滤条件、上限与硬链接去重。JSON 中路径扫描的字段位于顶层，应用扫描位于 `scan`。CSV 在 stderr 的 JSON 状态报告中提供汇总，NDJSON 在末尾 `summary.report` 中提供汇总。每种输出的逐文件格式沿用现有契约。字段取值见 [报告规范](schema.md#修改时间分桶)。
+
 ## 验证命令
 
 ```powershell
@@ -268,6 +279,7 @@ python -m unittest discover -s tests -p "test_exclude_dirs.py" -v
 python -m unittest discover -s tests -p "test_exclude_patterns.py" -v
 python -m unittest discover -s tests -p "test_extension_summary.py" -v
 python -m unittest discover -s tests -p "test_directory_summary.py" -v
+python -m unittest discover -s tests -p "test_mtime_buckets.py" -v
 python -m unittest discover -s tests -p "test_skip_details.py" -v
 ```
 

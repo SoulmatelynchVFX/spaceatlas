@@ -43,6 +43,7 @@ def _main(argv=None):
                             help="排除指定最后后缀，可重复；忽略大小写，. 表示无后缀")
     parser.add_argument("--by-extension", action="store_true", help="按文件名最后一个扩展名汇总占用，不读取正文")
     parser.add_argument("--by-directory", action="store_true", help="按一级子目录汇总已计入文件，根目录直属文件单列")
+    parser.add_argument("--by-mtime", action="store_true", help="按修改时间汇总已计入文件的数量与逻辑字节数")
     parser.add_argument("--format", choices=("json", "csv", "ndjson"), default="json",
                         help="输出格式；csv 状态写 stderr；ndjson 逐行输出文件事件及结束汇总")
     parser.add_argument("--output", type=Path, help="保存到扫描范围外的指定文件（UTF-8），默认拒绝覆盖")
@@ -85,6 +86,8 @@ def _main(argv=None):
         parser.error("--by-extension 仅用于 --path 或 --app，不能用于 --list-apps")
     if args.list_apps and args.by_directory:
         parser.error("--by-directory 仅用于 --path 或 --app，不能用于 --list-apps")
+    if args.list_apps and args.by_mtime:
+        parser.error("--by-mtime 仅用于 --path 或 --app，不能用于 --list-apps")
     inventory = None
     if args.list_apps or args.app is not None:
         if os.name != "nt":
@@ -117,6 +120,8 @@ def _render(args, inventory, excluded_names, output):
         scan_options["exclude_ext"] = args.exclude_ext
     if args.exclude_pattern is not None:
         scan_options["exclude_patterns"] = args.exclude_pattern
+    if args.by_mtime:
+        scan_options["by_mtime"] = True
     if args.app is not None:
         report_type = "application_scan"
         report = inspect_app(inventory, args.app, max_files=args.max_files,

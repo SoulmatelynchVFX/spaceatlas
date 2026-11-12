@@ -8,6 +8,7 @@ from pathlib import Path
 import stat
 import time
 
+from .mtime import MTIME_BUCKETS, format_reference_utc, modification_bucket
 from .path_glob import matches_any, validate_exclude_patterns
 
 
@@ -52,13 +53,16 @@ class DirectoryStats:
     exclude_patterns: list[str] = field(default_factory=list)
     pattern_excluded_directories: int = 0
     pattern_excluded_files: int = 0
+    mtime_reference_utc: str | None = None
+    mtime_buckets: dict[str, dict[str, int]] = field(default_factory=dict)
 
     @property
     def partial(self):
         return bool(self.error_count or self.skipped or self.stop_reason or
                     self.excluded_directories or self.depth_limited_directories or
                     self.size_filtered_files or self.extension_filtered_files or
-                    self.pattern_excluded_directories or self.pattern_excluded_files)
+                    self.pattern_excluded_directories or self.pattern_excluded_files or
+                    self.mtime_buckets.get("unknown", {}).get("file_count", 0))
 
     def record_error(self, path, error):
         self.error_count += 1
@@ -162,7 +166,8 @@ def validate_exclude_dirs(exclude_dirs=None):
 def directory_stats(path: Path, *, max_files=None, max_seconds=None, top_files=None,
                     exclude_dirs=None, by_extension=False, by_directory=False,
                     on_file=None, max_depth=None, min_size=None,
-                    include_ext=None, exclude_ext=None, exclude_patterns=None) -> DirectoryStats:
+                    include_ext=None, exclude_ext=None, exclude_patterns=None,
+                    by_mtime=False) -> DirectoryStats:
     validate_limits(max_files, max_seconds)
     validate_max_depth(max_depth)
     validate_min_size(min_size)
@@ -176,6 +181,10 @@ def directory_stats(path: Path, *, max_files=None, max_seconds=None, top_files=N
     result = DirectoryStats(str(root), exclude_dirs=excluded_names, max_depth=max_depth,
                             min_size=min_size, include_ext=included_exts, exclude_ext=excluded_exts,
                             exclude_patterns=normalized_patterns)
+    reference_ns = time.time_ns() if by_mtime else None
+    if reference_ns is not None:
+        result.mtime_reference_utc = format_reference_utc(reference_ns)
+        result.mtime_buckets = {key: {"file_count": 0, "logical_bytes": 0} for key in MTIME_BUCKETS}
     included_lookup, excluded_ext_lookup = set(included_exts), set(excluded_exts)
     excluded_lookup = set(excluded_names)
     patterns = tuple(tuple(pattern.split("/")) for pattern in normalized_patterns)
@@ -253,6 +262,10 @@ def directory_stats(path: Path, *, max_files=None, max_seconds=None, top_files=N
                         result.size_filtered_files += 1
                         result.size_filtered_bytes += info.st_size
                         continue
+                    if reference_ns is not None:
+                        bucket = result.mtime_buckets[modification_bucket(info, reference_ns)]
+                        bucket["file_count"] += 1
+                        bucket["logical_bytes"] += info.st_size
                     result.logical_bytes += info.st_size
                     result.file_count += 1
                     if by_directory:

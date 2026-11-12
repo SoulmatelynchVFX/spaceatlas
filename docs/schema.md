@@ -54,10 +54,12 @@
 | `pattern_excluded_files` | integer | 实际遇到且因通配符而未计入的普通文件路径数，先于硬链接去重、扩展名及大小筛选。 |
 | `extension_summary` | array of object | 开启 `--by-extension` 后的已计入文件分组，结构见“扩展名分组”。 |
 | `directory_summary` | array of object | 开启 `--by-directory` 后的一级目录分组，结构见“目录分组”。 |
+| `mtime_reference_utc` | string 或 null | 开启 `--by-mtime` 时使用的扫描起始 UTC 时刻，ISO 8601，固定九位小数和 `Z` 后缀。未开启时为 `null`。 |
+| `mtime_buckets` | object | 开启 `--by-mtime` 后的文件修改时间分桶，结构见“修改时间分桶”。未开启时为 `{}`。 |
 | `skip_reason_counts` | object | 原因字符串到计数的映射；键对应“跳过明细”的 reason，未发生的原因不输出。 |
 | `skip_details` | array of object | 按遇到顺序保留前 100 个跳过项，结构见“跳过明细”。 |
 | `skip_details_omitted` | integer | 超过明细上限而省略的跳过项数量。 |
-| `partial` | boolean | 有读取错误、跳过项、实际目录/路径排除、大小/扩展名过滤文件、深度截断目录或提前停止时为真；硬链接正常去重不会单独使它为真。 |
+| `partial` | boolean | 有读取错误、跳过项、实际目录/路径排除、大小/扩展名过滤文件、深度截断目录、提前停止，或开启修改时间分桶且 `unknown` 有计入文件时为真。硬链接正常去重不会单独使它为真。 |
 
 `skipped = sum(skip_reason_counts.values()) = len(skip_details) + skip_details_omitted`。启用对应分组时，组内 `logical_bytes` / `file_count` 之和等于扫描对象中的总值；只代表已观测范围。`partial: false` 也不意味着扫描是原子快照。
 
@@ -113,6 +115,21 @@
 | `file_count` | integer | 本组已计入普通文件数。 |
 
 按字节数降序，同大小按路径字符串升序。只列出至少计入一个文件的组。跨目录硬链接仅归于首次计入路径所在组；缺席的组不能当作零占用。
+
+## 修改时间分桶
+
+开启 `--by-mtime` 时，以下键均存在，每桶包含两个非负整数 `file_count` 和 `logical_bytes`。各桶总和分别等于扫描对象的同名字段。时间差等于参考时刻减去修改时间，每天按 24 小时计。
+
+| 键 | 时间差 |
+| --- | --- |
+| `lt_30d` | 0 天至不足 30 天 |
+| `30_to_lt_180d` | 30 天至不足 180 天 |
+| `180_to_365d` | 180 天至 365 天，含两端 |
+| `gt_365d` | 超过 365 天 |
+| `future` | 小于 0 天 |
+| `unknown` | 已计入文件的修改时间无法获取或表示，包括超出 UTC 年份 0001 至 9999 的值 |
+
+时间比较优先使用纳秒级文件元数据，实际精度取决于文件系统。元数据整体读取失败的文件只出现在扫描错误计数及明细中。存在未来时间本身不会使扫描标为 `partial`。
 
 ## 跳过明细
 
