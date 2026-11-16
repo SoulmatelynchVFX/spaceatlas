@@ -8,6 +8,7 @@ import sys
 
 from .app_scan import inspect_app
 from .csv_output import CsvFileWriter, CsvOutputError, CsvOutputInterrupted
+from .directory_tree import MAX_TREE_DEPTH, validate_tree_depth
 from .ndjson_output import NdjsonFileWriter, NdjsonOutputError, NdjsonOutputInterrupted
 from .scanner import directory_stats, validate_limits, validate_top_files, validate_exclude_dirs
 from .windows_inventory import discover_inventory
@@ -44,6 +45,8 @@ def _main(argv=None):
     parser.add_argument("--by-extension", action="store_true", help="按文件名最后一个扩展名汇总占用，不读取正文")
     parser.add_argument("--by-directory", action="store_true", help="按一级子目录汇总已计入文件，根目录直属文件单列")
     parser.add_argument("--by-mtime", action="store_true", help="按修改时间汇总已计入文件的数量与逻辑字节数")
+    parser.add_argument("--tree-depth", type=int,
+                        help=f"按目录树汇总占用；根为 0，显示深度为 0 至 {MAX_TREE_DEPTH}")
     parser.add_argument("--format", choices=("json", "csv", "ndjson"), default="json",
                         help="输出格式；csv 状态写 stderr；ndjson 逐行输出文件事件及结束汇总")
     parser.add_argument("--output", type=Path, help="保存到扫描范围外的指定文件（UTF-8），默认拒绝覆盖")
@@ -54,6 +57,7 @@ def _main(argv=None):
     try:
         validate_limits(args.max_files, args.max_seconds)
         validate_max_depth(args.max_depth)
+        validate_tree_depth(args.tree_depth)
         validate_top_files(args.top_files)
         excluded_names = validate_exclude_dirs(args.exclude_dir)
         validate_exclude_patterns(args.exclude_pattern)
@@ -88,6 +92,8 @@ def _main(argv=None):
         parser.error("--by-directory 仅用于 --path 或 --app，不能用于 --list-apps")
     if args.list_apps and args.by_mtime:
         parser.error("--by-mtime 仅用于 --path 或 --app，不能用于 --list-apps")
+    if args.list_apps and args.tree_depth is not None:
+        parser.error("--tree-depth 仅用于 --path 或 --app，不能用于 --list-apps")
     inventory = None
     if args.list_apps or args.app is not None:
         if os.name != "nt":
@@ -122,6 +128,8 @@ def _render(args, inventory, excluded_names, output):
         scan_options["exclude_patterns"] = args.exclude_pattern
     if args.by_mtime:
         scan_options["by_mtime"] = True
+    if args.tree_depth is not None:
+        scan_options["tree_depth"] = args.tree_depth
     if args.app is not None:
         report_type = "application_scan"
         report = inspect_app(inventory, args.app, max_files=args.max_files,

@@ -9,6 +9,7 @@ from .windows_inventory import InventoryResult
 from .scan_report import SCAN_NOTE, scan_report
 from .scanner import validate_max_depth, validate_min_size, validate_extension_filters
 from .path_glob import validate_exclude_patterns
+from .directory_tree import validate_tree_depth
 
 
 def valid_install_location(value: str) -> bool:
@@ -27,9 +28,10 @@ def valid_install_location(value: str) -> bool:
 def inspect_app(inventory: InventoryResult, app_id: str, *, max_files=None, max_seconds=None,
                 top_files=None, exclude_dirs=None, by_extension=False, by_directory=False,
                 on_file=None, max_depth=None, min_size=None, include_ext=None, exclude_ext=None,
-                exclude_patterns=None, by_mtime=False) -> dict:
+                exclude_patterns=None, by_mtime=False, tree_depth=None) -> dict:
     validate_limits(max_files, max_seconds)
     validate_max_depth(max_depth)
+    validate_tree_depth(tree_depth)
     validate_min_size(min_size)
     validate_top_files(top_files)
     included_exts, excluded_exts = validate_extension_filters(include_ext, exclude_ext)
@@ -70,6 +72,7 @@ def inspect_app(inventory: InventoryResult, app_id: str, *, max_files=None, max_
                             top_files=top_files, exclude_dirs=excluded_names, by_extension=by_extension,
                             by_directory=by_directory,
                             **({"by_mtime": True} if by_mtime else {}),
+                            **({"tree_depth": tree_depth} if tree_depth is not None else {}),
                             **({"max_depth": max_depth} if max_depth is not None else {}),
                             **({"min_size": min_size} if min_size is not None else {}),
                             **({"include_ext": included_exts} if included_exts else {}),

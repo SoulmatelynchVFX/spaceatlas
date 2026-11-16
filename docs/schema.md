@@ -54,6 +54,8 @@
 | `pattern_excluded_files` | integer | 实际遇到且因通配符而未计入的普通文件路径数，先于硬链接去重、扩展名及大小筛选。 |
 | `extension_summary` | array of object | 开启 `--by-extension` 后的已计入文件分组，结构见“扩展名分组”。 |
 | `directory_summary` | array of object | 开启 `--by-directory` 后的一级目录分组，结构见“目录分组”。 |
+| `tree_depth` | integer 或 null | 目录树展示深度，0 至 64，未启用时为 `null`。 |
+| `directory_tree` | object 或 null | 树形统计根节点，结构见“目录树形占比”。未启用或无计入文件时为 `null`。 |
 | `mtime_reference_utc` | string 或 null | 开启 `--by-mtime` 时使用的扫描起始 UTC 时刻，ISO 8601，固定九位小数和 `Z` 后缀。未开启时为 `null`。 |
 | `mtime_buckets` | object | 开启 `--by-mtime` 后的文件修改时间分桶，结构见“修改时间分桶”。未开启时为 `{}`。 |
 | `skip_reason_counts` | object | 原因字符串到计数的映射；键对应“跳过明细”的 reason，未发生的原因不输出。 |
@@ -61,7 +63,7 @@
 | `skip_details_omitted` | integer | 超过明细上限而省略的跳过项数量。 |
 | `partial` | boolean | 有读取错误、跳过项、实际目录/路径排除、大小/扩展名过滤文件、深度截断目录、提前停止，或开启修改时间分桶且 `unknown` 有计入文件时为真。硬链接正常去重不会单独使它为真。 |
 
-`skipped = sum(skip_reason_counts.values()) = len(skip_details) + skip_details_omitted`。启用对应分组时，组内 `logical_bytes` / `file_count` 之和等于扫描对象中的总值；只代表已观测范围。`partial: false` 也不意味着扫描是原子快照。
+`skipped = sum(skip_reason_counts.values()) = len(skip_details) + skip_details_omitted`。启用平面分组时，各组 `logical_bytes` / `file_count` 之和等于扫描对象中的总值。目录树按各层父子关系核对，详见“目录树形占比”。统计只代表已观测范围。`partial: false` 也不意味着扫描是原子快照。
 
 深度是相对显式根目标的路径层级，根为 0、直属条目为 1。深度 N 的普通文件可计入，深度 N 的普通目录不调用 scandir、不访问其后代元数据；即使事实上为空也保守计一次 depth_limited_directories，因为未打开无法确认。单文件根在 N=0 仍可统计。达到目录深度边界不会停止其他分支，因此不占用 stop_reason；其非零计数独立使 partial=true、正常结束退出 2。全局数量/时长上限或中断仍保留原 stop_reason。链接/离线跳过及目录排除先于深度截断分类，不重复计数；目录分组仅包含实际计入的文件，不扩大深度边界。CSV 状态及 NDJSON summary 同样带这两个字段，文件明细不变；schema_version 仍为 1。
 
@@ -115,6 +117,21 @@
 | `file_count` | integer | 本组已计入普通文件数。 |
 
 按字节数降序，同大小按路径字符串升序。只列出至少计入一个文件的组。跨目录硬链接仅归于首次计入路径所在组；缺席的组不能当作零占用。
+
+## 目录树形占比
+
+| 字段 | JSON 类型 | 含义 |
+| --- | --- | --- |
+| `name` | string | 目录、显式单文件的名称，或分组标签「直属文件」「其他」。 |
+| `kind` | string | `directory` 为可见目录，`file` 为显式扫描的单文件，`direct_files` 为所在目录的直属文件，`other` 为更深层文件。用此字段区分与分组标签同名的真实目录。 |
+| `logical_bytes` | integer | 该项覆盖的已计入逻辑字节数。 |
+| `file_count` | integer | 该项覆盖的已计入且去重的文件数。对 `other` 是合并的文件条目数。 |
+| `share_percent` | string | 占整个扫描已计入逻辑字节的百分比，固定两位小数，四舍五入。总字节为零时各项为 `"0.00"`。 |
+| `children` | array of object | 目录节点的子项依次为直属文件、子目录、其他，缺少计入文件的分组省略。叶节点数组为空。 |
+
+根节点的文件数与字节数等于扫描对象的总量，每个目录节点的子项合计等于该目录节点。百分比按各项独立舍入。子目录按逻辑字节降序，再按大小写折叠名称及原名升序。硬链接分配至首次计入的路径。单文件根本身是叶节点。
+
+展示折叠仅汇总已计入的后代，单独使用不会使报告标为 `partial`。`--max-depth` 仍是原遍历硬边界。CSV 文件列及 NDJSON 文件事件沿用原结构，树在结束汇总中。
 
 ## 修改时间分桶
 

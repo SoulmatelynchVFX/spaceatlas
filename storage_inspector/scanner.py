@@ -8,6 +8,7 @@ from pathlib import Path
 import stat
 import time
 
+from .directory_tree import TreeNode, validate_tree_depth
 from .mtime import MTIME_BUCKETS, format_reference_utc, modification_bucket
 from .path_glob import matches_any, validate_exclude_patterns
 
@@ -55,6 +56,8 @@ class DirectoryStats:
     pattern_excluded_files: int = 0
     mtime_reference_utc: str | None = None
     mtime_buckets: dict[str, dict[str, int]] = field(default_factory=dict)
+    tree_depth: int | None = None
+    directory_tree: dict | None = None
 
     @property
     def partial(self):
@@ -167,9 +170,10 @@ def directory_stats(path: Path, *, max_files=None, max_seconds=None, top_files=N
                     exclude_dirs=None, by_extension=False, by_directory=False,
                     on_file=None, max_depth=None, min_size=None,
                     include_ext=None, exclude_ext=None, exclude_patterns=None,
-                    by_mtime=False) -> DirectoryStats:
+                    by_mtime=False, tree_depth=None) -> DirectoryStats:
     validate_limits(max_files, max_seconds)
     validate_max_depth(max_depth)
+    validate_tree_depth(tree_depth)
     validate_min_size(min_size)
     validate_top_files(top_files)
     included_exts, excluded_exts = validate_extension_filters(include_ext, exclude_ext)
@@ -180,7 +184,8 @@ def directory_stats(path: Path, *, max_files=None, max_seconds=None, top_files=N
     root = Path(os.path.abspath(path))
     result = DirectoryStats(str(root), exclude_dirs=excluded_names, max_depth=max_depth,
                             min_size=min_size, include_ext=included_exts, exclude_ext=excluded_exts,
-                            exclude_patterns=normalized_patterns)
+                            exclude_patterns=normalized_patterns, tree_depth=tree_depth)
+    tree = TreeNode(root.name or str(root)) if tree_depth is not None else None
     reference_ns = time.time_ns() if by_mtime else None
     if reference_ns is not None:
         result.mtime_reference_utc = format_reference_utc(reference_ns)
@@ -268,6 +273,8 @@ def directory_stats(path: Path, *, max_files=None, max_seconds=None, top_files=N
                         bucket["logical_bytes"] += info.st_size
                     result.logical_bytes += info.st_size
                     result.file_count += 1
+                    if tree is not None:
+                        tree.add_file(current.relative_to(root).parts, info.st_size, tree_depth)
                     if by_directory:
                         if current == root:
                             group_path, kind = root, "file"
@@ -321,4 +328,6 @@ def directory_stats(path: Path, *, max_files=None, max_seconds=None, top_files=N
     result.directory_summary = sorted(
         directories.values(), key=lambda group: (-group["logical_bytes"], group["path"])
     )
+    if tree is not None and tree.file_count:
+        result.directory_tree = tree.report(result.logical_bytes)
     return result

@@ -257,6 +257,18 @@ python -m storage_inspector --app registry.REPLACE_WITH_APP_ID --by-mtime --form
 
 `mtime_buckets` 的各桶汇总 `file_count` 和 `logical_bytes`，总和对应已计入文件，沿用同一次扫描的过滤条件、上限与硬链接去重。JSON 中路径扫描的字段位于顶层，应用扫描位于 `scan`。CSV 在 stderr 的 JSON 状态报告中提供汇总，NDJSON 在末尾 `summary.report` 中提供汇总。每种输出的逐文件格式沿用现有契约。字段取值见 [报告规范](schema.md#修改时间分桶)。
 
+## 目录树形占比
+
+```powershell
+python -m storage_inspector --path "D:\Example" --tree-depth 2
+```
+
+`--tree-depth` 接受 0 至 64 的整数，控制报告展示层数。根目录为 0，各层的直属文件单列。超过展示层数的已计入文件汇入最深可见目录下的「其他」，其 `file_count` 为合并的文件条目数。JSON 以固定两空格缩进展示嵌套树。同层目录按逻辑字节降序，同大小按名称排序。
+
+展示深度不影响扫描范围。若要限制遍历，另用 `--max-depth`。树只汇总本次扫描已计入且去重后的文件，跳过、排除、读取失败及未展开范围通过原扫描诊断披露。每项占比以整个扫描已计入的逻辑字节为分母。空树、零字节文件和各格式字段见 [报告规范](schema.md#目录树形占比)。
+
+支持路径和单应用扫描。JSON 在扫描对象内输出树，CSV 在 stderr 的状态报告中输出树，NDJSON 在最后一条 `summary` 的 `report` 中输出树。
+
 ## 验证命令
 
 ```powershell
@@ -280,6 +292,7 @@ python -m unittest discover -s tests -p "test_exclude_patterns.py" -v
 python -m unittest discover -s tests -p "test_extension_summary.py" -v
 python -m unittest discover -s tests -p "test_directory_summary.py" -v
 python -m unittest discover -s tests -p "test_mtime_buckets.py" -v
+python -m unittest discover -s tests -p "test_directory_tree.py" -v
 python -m unittest discover -s tests -p "test_skip_details.py" -v
 ```
 
