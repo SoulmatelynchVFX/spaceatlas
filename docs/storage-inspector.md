@@ -269,6 +269,20 @@ python -m storage_inspector --path "D:\Example" --tree-depth 2
 
 支持路径和单应用扫描。JSON 在扫描对象内输出树，CSV 在 stderr 的状态报告中输出树，NDJSON 在最后一条 `summary` 的 `report` 中输出树。
 
+## 排序与条数限制
+
+```powershell
+python -m storage_inspector --path "D:\Example" --limit 5
+python -m storage_inspector --path "D:\Example" --by-directory --sort count --limit 3
+python -m storage_inspector --path "D:\Example" --by-extension --sort name
+```
+
+`--sort` 或 `--limit` 启用扫描对象中的 `ranking`。没有指定分组时排行文件；指定 `--by-directory` 或 `--by-extension` 时排行对应分组。排序时只选一种分组。`size` 按逻辑字节降序，`count` 按组内文件数降序，`name` 按完整路径或扩展名升序。文件仅接受 size/name。默认 size，文件默认最多 10 项，分组默认展示全部。limit 必须为正整数。
+
+`--top-files N` 仍输出 `largest_files`，仅按大小排行文件。与新参数组合时，只接受文件 size 排序，limit 若同时给出须与 N 相等，两者共用一次候选收集。原分组字段保留完整总量，展示排序和截取读取 `ranking.entries`。查看 omitted 字段可得未展示的条目数、文件数和字节数。展示截取不改变扫描范围或 partial。
+
+JSON、CSV stderr 状态、NDJSON 末尾 summary 均包含排行；CSV/NDJSON 的逐文件输出仍输出全部计入项。旧 CSV 与 `--top-files` 的互斥行为继续适用。目录树和修改时间分桶保留各自结构。完整字段及并列顺序见 [排序结果](schema.md#排序结果)。
+
 ## 验证命令
 
 ```powershell
@@ -293,6 +307,7 @@ python -m unittest discover -s tests -p "test_extension_summary.py" -v
 python -m unittest discover -s tests -p "test_directory_summary.py" -v
 python -m unittest discover -s tests -p "test_mtime_buckets.py" -v
 python -m unittest discover -s tests -p "test_directory_tree.py" -v
+python -m unittest discover -s tests -p "test_ranking.py" -v
 python -m unittest discover -s tests -p "test_skip_details.py" -v
 ```
 

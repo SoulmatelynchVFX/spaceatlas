@@ -16,6 +16,7 @@ from .report_output import ReportOutput, ReportOutputError
 from .scan_report import SCAN_NOTE, scan_report
 from .scanner import validate_max_depth, parse_min_size, validate_extension_filters
 from .path_glob import validate_exclude_patterns
+from .ranking import ranking_options
 
 
 SCHEMA_VERSION = 1
@@ -33,6 +34,9 @@ def _main(argv=None):
     parser.add_argument("--min-size", type=parse_min_size,
                         help="只计入逻辑大小不少于阈值的文件；整数为字节，K/M/G 为 1024 进制")
     parser.add_argument("--top-files", type=int, help="列出已计入文件中逻辑长度最大的前 N 项，必须为正整数")
+    parser.add_argument("--sort", choices=("size", "count", "name"),
+                        help="按大小、分组文件数或名称排序；默认 size")
+    parser.add_argument("--limit", type=int, help="排行至多展示 N 项；正整数")
     parser.add_argument("--exclude-dir", action="append", metavar="NAME",
                         help="跳过同名子目录（不区分大小写，可重复指定，不接受路径或通配符）")
     parser.add_argument("--exclude-pattern", action="append", metavar="GLOB",
@@ -59,6 +63,7 @@ def _main(argv=None):
         validate_max_depth(args.max_depth)
         validate_tree_depth(args.tree_depth)
         validate_top_files(args.top_files)
+        ranking_options(args.sort, args.limit, args.top_files, args.by_extension, args.by_directory)
         excluded_names = validate_exclude_dirs(args.exclude_dir)
         validate_exclude_patterns(args.exclude_pattern)
         validate_extension_filters(args.include_ext, args.exclude_ext)
@@ -78,6 +83,8 @@ def _main(argv=None):
         parser.error("扫描限制仅用于 --path 或 --app，不能用于 --list-apps")
     if args.list_apps and args.top_files is not None:
         parser.error("--top-files 仅用于 --path 或 --app，不能用于 --list-apps")
+    if args.list_apps and (args.sort is not None or args.limit is not None):
+        parser.error("--sort 和 --limit 仅用于 --path 或 --app")
     if args.list_apps and args.min_size is not None:
         parser.error("--min-size 仅用于 --path 或 --app，不能用于 --list-apps")
     if args.list_apps and args.exclude_dir is not None:
@@ -130,6 +137,10 @@ def _render(args, inventory, excluded_names, output):
         scan_options["by_mtime"] = True
     if args.tree_depth is not None:
         scan_options["tree_depth"] = args.tree_depth
+    if args.sort is not None:
+        scan_options["sort"] = args.sort
+    if args.limit is not None:
+        scan_options["limit"] = args.limit
     if args.app is not None:
         report_type = "application_scan"
         report = inspect_app(inventory, args.app, max_files=args.max_files,

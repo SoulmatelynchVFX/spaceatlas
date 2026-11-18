@@ -11,6 +11,7 @@ import time
 from .directory_tree import TreeNode, validate_tree_depth
 from .mtime import MTIME_BUCKETS, format_reference_utc, modification_bucket
 from .path_glob import matches_any, validate_exclude_patterns
+from .ranking import FileCandidate, ranking_options, ranking_report
 
 
 # Reparse points include Windows junctions and many cloud placeholders.
@@ -58,6 +59,7 @@ class DirectoryStats:
     mtime_buckets: dict[str, dict[str, int]] = field(default_factory=dict)
     tree_depth: int | None = None
     directory_tree: dict | None = None
+    ranking: dict | None = None
 
     @property
     def partial(self):
@@ -170,12 +172,15 @@ def directory_stats(path: Path, *, max_files=None, max_seconds=None, top_files=N
                     exclude_dirs=None, by_extension=False, by_directory=False,
                     on_file=None, max_depth=None, min_size=None,
                     include_ext=None, exclude_ext=None, exclude_patterns=None,
-                    by_mtime=False, tree_depth=None) -> DirectoryStats:
+                    by_mtime=False, tree_depth=None, sort=None, limit=None) -> DirectoryStats:
     validate_limits(max_files, max_seconds)
     validate_max_depth(max_depth)
     validate_tree_depth(tree_depth)
     validate_min_size(min_size)
     validate_top_files(top_files)
+    ranking = ranking_options(sort, limit, top_files, by_extension, by_directory)
+    file_limit = ranking[2] if ranking and ranking[0] == "files" else top_files
+    file_order = ranking[1] if ranking and ranking[0] == "files" else "size"
     included_exts, excluded_exts = validate_extension_filters(include_ext, exclude_ext)
     excluded_names = validate_exclude_dirs(exclude_dirs)
     normalized_patterns = validate_exclude_patterns(exclude_patterns)
@@ -296,9 +301,9 @@ def directory_stats(path: Path, *, max_files=None, max_seconds=None, top_files=N
                         })
                         group["logical_bytes"] += info.st_size
                         group["file_count"] += 1
-                    if top_files is not None:
-                        candidate = (info.st_size, str(current))
-                        if len(largest) < top_files:
+                    if file_limit is not None:
+                        candidate = FileCandidate(info.st_size, str(current), file_order)
+                        if len(largest) < file_limit:
                             heapq.heappush(largest, candidate)
                         else:
                             heapq.heappushpop(largest, candidate)
@@ -318,10 +323,11 @@ def directory_stats(path: Path, *, max_files=None, max_seconds=None, top_files=N
             close = getattr(entries, "close", None)
             if close:
                 close()
-    result.largest_files = [
-        {"path": path, "logical_bytes": size}
-        for size, path in sorted(largest, reverse=True)
-    ]
+    ranked_files = sorted(largest, reverse=True)
+    if top_files is not None:
+        result.largest_files = [
+            {"path": item.path, "logical_bytes": item.size} for item in ranked_files
+        ]
     result.extension_summary = sorted(
         extensions.values(), key=lambda group: (-group["logical_bytes"], group["extension"])
     )
@@ -330,4 +336,6 @@ def directory_stats(path: Path, *, max_files=None, max_seconds=None, top_files=N
     )
     if tree is not None and tree.file_count:
         result.directory_tree = tree.report(result.logical_bytes)
+    if ranking is not None:
+        result.ranking = ranking_report(ranking, result, ranked_files)
     return result
