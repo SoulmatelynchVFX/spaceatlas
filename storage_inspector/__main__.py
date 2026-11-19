@@ -17,6 +17,7 @@ from .scan_report import SCAN_NOTE, scan_report
 from .scanner import validate_max_depth, parse_min_size, validate_extension_filters
 from .path_glob import validate_exclude_patterns
 from .ranking import ranking_options
+from .file_types import load_file_types
 
 
 SCHEMA_VERSION = 1
@@ -47,6 +48,7 @@ def _main(argv=None):
     extensions.add_argument("--exclude-ext", action="append", metavar="EXT",
                             help="排除指定最后后缀，可重复；忽略大小写，. 表示无后缀")
     parser.add_argument("--by-extension", action="store_true", help="按文件名最后一个扩展名汇总占用，不读取正文")
+    parser.add_argument("--by-type", action="store_true", help="按最后后缀汇总图片、视频等文件大类")
     parser.add_argument("--by-directory", action="store_true", help="按一级子目录汇总已计入文件，根目录直属文件单列")
     parser.add_argument("--by-mtime", action="store_true", help="按修改时间汇总已计入文件的数量与逻辑字节数")
     parser.add_argument("--tree-depth", type=int,
@@ -63,7 +65,10 @@ def _main(argv=None):
         validate_max_depth(args.max_depth)
         validate_tree_depth(args.tree_depth)
         validate_top_files(args.top_files)
-        ranking_options(args.sort, args.limit, args.top_files, args.by_extension, args.by_directory)
+        ranking_options(args.sort, args.limit, args.top_files, args.by_extension, args.by_directory,
+                        args.by_type)
+        if args.by_type:
+            load_file_types()
         excluded_names = validate_exclude_dirs(args.exclude_dir)
         validate_exclude_patterns(args.exclude_pattern)
         validate_extension_filters(args.include_ext, args.exclude_ext)
@@ -95,6 +100,8 @@ def _main(argv=None):
         parser.error("扩展名过滤仅用于 --path 或 --app，不能用于 --list-apps")
     if args.list_apps and args.by_extension:
         parser.error("--by-extension 仅用于 --path 或 --app，不能用于 --list-apps")
+    if args.list_apps and args.by_type:
+        parser.error("--by-type 仅用于 --path 或 --app")
     if args.list_apps and args.by_directory:
         parser.error("--by-directory 仅用于 --path 或 --app，不能用于 --list-apps")
     if args.list_apps and args.by_mtime:
@@ -135,6 +142,8 @@ def _render(args, inventory, excluded_names, output):
         scan_options["exclude_patterns"] = args.exclude_pattern
     if args.by_mtime:
         scan_options["by_mtime"] = True
+    if args.by_type:
+        scan_options["by_type"] = True
     if args.tree_depth is not None:
         scan_options["tree_depth"] = args.tree_depth
     if args.sort is not None:

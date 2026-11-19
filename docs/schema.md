@@ -54,6 +54,7 @@
 | `pattern_excluded_files` | integer | 实际遇到且因通配符而未计入的普通文件路径数，先于硬链接去重、扩展名及大小筛选。 |
 | `extension_summary` | array of object | 开启 `--by-extension` 后的已计入文件分组，结构见“扩展名分组”。 |
 | `directory_summary` | array of object | 开启 `--by-directory` 后的一级目录分组，结构见“目录分组”。 |
+| `type_summary` | array of object | 开启 `--by-type` 后按最后后缀推断的文件类型分组，结构见“文件类型分组”。未启用或无计入文件时为空数组。 |
 | `ranking` | object 或 null | 指定 `--sort` 或 `--limit` 时的排序与条数限制结果，见“排序结果”。未指定时为 `null`。 |
 | `tree_depth` | integer 或 null | 目录树展示深度，0 至 64，未启用时为 `null`。 |
 | `directory_tree` | object 或 null | 树形统计根节点，结构见“目录树形占比”。未启用或无计入文件时为 `null`。 |
@@ -119,11 +120,21 @@
 
 按字节数降序，同大小按路径字符串升序。只列出至少计入一个文件的组。跨目录硬链接仅归于首次计入路径所在组；缺席的组不能当作零占用。
 
+## 文件类型分组
+
+| 字段 | JSON 类型 | 含义 |
+| --- | --- | --- |
+| `category` | string | `image`、`video`、`audio`、`document`、`code`、`archive` 或 `other`。 |
+| `logical_bytes` | integer | 该类别已计入的逻辑字节数。 |
+| `file_count` | integer | 该类别已计入且去重的文件数。 |
+
+按字节降序，同大小按 category 升序。各类别的字节数和文件数合计等于扫描总量。命名推断本身不使扫描变为 partial。映射文件固定为项目自带的 file_types.json，七个类别必须齐全，other 的列表为空。后缀以点开头，仅允许小写 ASCII 字母或数字，后缀不能重复出现。启用时遇到无效映射会报错。schema_version 仍为 1。
+
 ## 排序结果
 
 | 字段 | JSON 类型 | 含义 |
 | --- | --- | --- |
-| `source` | string | `files`、`directory_summary` 或 `extension_summary`。 |
+| `source` | string | `files`、`directory_summary`、`extension_summary` 或 `type_summary`。 |
 | `sort` | string | `size` 按字节降序、`count` 按组内文件数降序、`name` 按名称升序。文件不接受 `count`。 |
 | `limit` | integer 或 null | 最大展示条目数。文件排行默认 10，分组默认 `null` 表示展示全部。 |
 | `entries` | array of object | 文件含 path、logical_bytes、file_count（固定 1）；分组条目结构与 source 对应的原分组相同。 |
@@ -131,7 +142,7 @@
 | `omitted_file_count` | integer | 未展示条目覆盖的已计入文件数。 |
 | `omitted_logical_bytes` | integer | 未展示条目覆盖的已计入逻辑字节。 |
 
-名称排序使用完整 path 或 extension 字符串，按 Unicode 码点升序。分组的 size/count 并列时按名称升序。文件 size 并列时按完整 path 降序，沿用旧 `--top-files`。文件排行只保留至多 limit 个候选，沿用同次扫描的计入顺序、过滤及硬链接去重。
+名称排序使用完整 path、extension 或 category 字符串，按 Unicode 码点升序。分组的 size/count 并列时按名称升序。文件 size 并列时按完整 path 降序，沿用旧 `--top-files`。文件排行只保留至多 limit 个候选，沿用同次扫描的计入顺序、过滤及硬链接去重。
 
 原完整分组仍遵循其既有排序，排序及截取结果放入 ranking.entries。entries 中的文件数、字节数与各自 omitted 字段相加等于扫描总量。省略展示本身不改变 partial，其他扫描诊断继续反映观测缺口。新字段属于版本 1 的兼容增补。
 

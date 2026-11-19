@@ -11,6 +11,7 @@ from .scanner import validate_max_depth, validate_min_size, validate_extension_f
 from .path_glob import validate_exclude_patterns
 from .directory_tree import validate_tree_depth
 from .ranking import ranking_options
+from .file_types import load_file_types
 
 
 def valid_install_location(value: str) -> bool:
@@ -29,13 +30,16 @@ def valid_install_location(value: str) -> bool:
 def inspect_app(inventory: InventoryResult, app_id: str, *, max_files=None, max_seconds=None,
                 top_files=None, exclude_dirs=None, by_extension=False, by_directory=False,
                 on_file=None, max_depth=None, min_size=None, include_ext=None, exclude_ext=None,
-                exclude_patterns=None, by_mtime=False, tree_depth=None, sort=None, limit=None) -> dict:
+                exclude_patterns=None, by_mtime=False, tree_depth=None, sort=None, limit=None,
+                by_type=False) -> dict:
     validate_limits(max_files, max_seconds)
     validate_max_depth(max_depth)
     validate_tree_depth(tree_depth)
     validate_min_size(min_size)
     validate_top_files(top_files)
-    ranking_options(sort, limit, top_files, by_extension, by_directory)
+    ranking_options(sort, limit, top_files, by_extension, by_directory, by_type)
+    if by_type:
+        load_file_types()
     included_exts, excluded_exts = validate_extension_filters(include_ext, exclude_ext)
     excluded_names = validate_exclude_dirs(exclude_dirs)
     normalized_patterns = validate_exclude_patterns(exclude_patterns)
@@ -73,6 +77,7 @@ def inspect_app(inventory: InventoryResult, app_id: str, *, max_files=None, max_
     stats = directory_stats(path, max_files=max_files, max_seconds=max_seconds,
                             top_files=top_files, exclude_dirs=excluded_names, by_extension=by_extension,
                             by_directory=by_directory,
+                            **({"by_type": True} if by_type else {}),
                             **({"by_mtime": True} if by_mtime else {}),
                             **({"tree_depth": tree_depth} if tree_depth is not None else {}),
                             **({"sort": sort} if sort is not None else {}),

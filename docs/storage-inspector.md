@@ -283,6 +283,19 @@ python -m storage_inspector --path "D:\Example" --by-extension --sort name
 
 JSON、CSV stderr 状态、NDJSON 末尾 summary 均包含排行；CSV/NDJSON 的逐文件输出仍输出全部计入项。旧 CSV 与 `--top-files` 的互斥行为继续适用。目录树和修改时间分桶保留各自结构。完整字段及并列顺序见 [排序结果](schema.md#排序结果)。
 
+## 文件类型汇总
+
+```powershell
+python -m storage_inspector --path "D:\Example" --by-type
+python -m storage_inspector --path "D:\Example" --by-type --sort count --limit 3
+```
+
+`--by-type` 支持指定路径和单应用扫描。分类使用随项目提供的 `storage_inspector/file_types.json`，按文件名最后一个后缀进行大小写不敏感匹配。七类为 image（图片）、video（视频）、audio（音频）、document（文档）、code（代码）、archive（压缩包）、other（其他）。例如 `photo.JPG` 归图片，`backup.tar.gz` 按 `.gz` 归压缩包，未知后缀、无后缀及仅有开头点的名称归其他。
+
+汇总仅计入本次扫描经过过滤和硬链接去重的文件。只列出有计入文件的类别，零字节文件仍计数。JSON 的 `type_summary`、CSV stderr 状态及 NDJSON 的末尾 summary 口径一致。可与原分组同时查看，启用排序时只选择一种分组。映射缺失、JSON 语法错误、类别错误、后缀格式错误或重复归属会明确报错。
+
+类别依据命名推断，文件正文和真实内容类型需由使用者另行判断。完整条目见 [报告规范](schema.md#文件类型分组)。
+
 ## 验证命令
 
 ```powershell
@@ -308,6 +321,7 @@ python -m unittest discover -s tests -p "test_directory_summary.py" -v
 python -m unittest discover -s tests -p "test_mtime_buckets.py" -v
 python -m unittest discover -s tests -p "test_directory_tree.py" -v
 python -m unittest discover -s tests -p "test_ranking.py" -v
+python -m unittest discover -s tests -p "test_file_types.py" -v
 python -m unittest discover -s tests -p "test_skip_details.py" -v
 ```
 

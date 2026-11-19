@@ -9,6 +9,7 @@ import stat
 import time
 
 from .directory_tree import TreeNode, validate_tree_depth
+from .file_types import load_file_types
 from .mtime import MTIME_BUCKETS, format_reference_utc, modification_bucket
 from .path_glob import matches_any, validate_exclude_patterns
 from .ranking import FileCandidate, ranking_options, ranking_report
@@ -60,6 +61,7 @@ class DirectoryStats:
     tree_depth: int | None = None
     directory_tree: dict | None = None
     ranking: dict | None = None
+    type_summary: list[dict] = field(default_factory=list)
 
     @property
     def partial(self):
@@ -172,13 +174,14 @@ def directory_stats(path: Path, *, max_files=None, max_seconds=None, top_files=N
                     exclude_dirs=None, by_extension=False, by_directory=False,
                     on_file=None, max_depth=None, min_size=None,
                     include_ext=None, exclude_ext=None, exclude_patterns=None,
-                    by_mtime=False, tree_depth=None, sort=None, limit=None) -> DirectoryStats:
+                    by_mtime=False, tree_depth=None, sort=None, limit=None, by_type=False) -> DirectoryStats:
     validate_limits(max_files, max_seconds)
     validate_max_depth(max_depth)
     validate_tree_depth(tree_depth)
     validate_min_size(min_size)
     validate_top_files(top_files)
-    ranking = ranking_options(sort, limit, top_files, by_extension, by_directory)
+    ranking = ranking_options(sort, limit, top_files, by_extension, by_directory, by_type)
+    type_lookup = load_file_types() if by_type else None
     file_limit = ranking[2] if ranking and ranking[0] == "files" else top_files
     file_order = ranking[1] if ranking and ranking[0] == "files" else "size"
     included_exts, excluded_exts = validate_extension_filters(include_ext, exclude_ext)
@@ -211,6 +214,7 @@ def directory_stats(path: Path, *, max_files=None, max_seconds=None, top_files=N
     largest = []
     extensions = {}
     directories = {}
+    types = {}
     try:
         while stack:
             if deadline is not None and time.monotonic() >= deadline:
@@ -278,6 +282,13 @@ def directory_stats(path: Path, *, max_files=None, max_seconds=None, top_files=N
                         bucket["logical_bytes"] += info.st_size
                     result.logical_bytes += info.st_size
                     result.file_count += 1
+                    if type_lookup is not None:
+                        category = type_lookup.get(extension, "other")
+                        group = types.setdefault(category, {
+                            "category": category, "logical_bytes": 0, "file_count": 0,
+                        })
+                        group["logical_bytes"] += info.st_size
+                        group["file_count"] += 1
                     if tree is not None:
                         tree.add_file(current.relative_to(root).parts, info.st_size, tree_depth)
                     if by_directory:
@@ -336,6 +347,9 @@ def directory_stats(path: Path, *, max_files=None, max_seconds=None, top_files=N
     )
     if tree is not None and tree.file_count:
         result.directory_tree = tree.report(result.logical_bytes)
+    result.type_summary = sorted(
+        types.values(), key=lambda group: (-group["logical_bytes"], group["category"])
+    )
     if ranking is not None:
         result.ranking = ranking_report(ranking, result, ranked_files)
     return result
