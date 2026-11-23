@@ -326,3 +326,13 @@ python -m unittest discover -s tests -p "test_skip_details.py" -v
 ```
 
 测试只使用临时合成文件及模拟错误，不扫描真实应用数据，不执行清理。完整原型的后续功能尚未作为这个基础模块发布。
+
+## 按系统位置分类
+
+```powershell
+python -m storage_inspector --path "D:/Your/Explicit/Folder" --by-location
+```
+
+只对指定范围内已计入文件统计 Program Files、ProgramData、当前用户 AppData、其他或未知位置。位置从当前进程环境读取，不写死用户名，不自动扩大到这些目录，不读文件正文。可与原有深度、过滤、去重和时长/文件数上限组合；分组总数、字节数与本次已观测合计一致。`--app APP_ID --by-location` 仍仅扫描应用声明的安装位置，不包含应用全部数据。
+
+未配置完整分类根或非 Windows 时，无法识别的路径归 unknown；已知三类根而未匹配的归 other。环境中的分类路径不保证经过系统认证。跨位置硬链接只归首个已计入路径，顺序可能改变分组分布。分类不是应用归属、缓存识别、磁盘分配量或清理建议。支持 JSON、CSV 状态与 NDJSON 汇总，不可用于 --list-apps；完整字段见 schema.md。

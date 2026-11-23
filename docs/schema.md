@@ -54,6 +54,7 @@
 | `pattern_excluded_files` | integer | 实际遇到且因通配符而未计入的普通文件路径数，先于硬链接去重、扩展名及大小筛选。 |
 | `extension_summary` | array of object | 开启 `--by-extension` 后的已计入文件分组，结构见“扩展名分组”。 |
 | `directory_summary` | array of object | 开启 `--by-directory` 后的一级目录分组，结构见“目录分组”。 |
+| `location_summary` | array of object | 开启 `--by-location` 后按系统位置分类已计入文件；未启用或无计入文件时为空数组。见“位置分类”。 |
 | `type_summary` | array of object | 开启 `--by-type` 后按最后后缀推断的文件类型分组，结构见“文件类型分组”。未启用或无计入文件时为空数组。 |
 | `ranking` | object 或 null | 指定 `--sort` 或 `--limit` 时的排序与条数限制结果，见“排序结果”。未指定时为 `null`。 |
 | `tree_depth` | integer 或 null | 目录树展示深度，0 至 64，未启用时为 `null`。 |
@@ -290,3 +291,11 @@ CSV 完整退出 0，部分结果或参数错误退出 2，中断退出 130，�
 | `130` | 遍历中断时输出带版本的部分报告；报告尚未形成时中断则仅 stderr 提示。 |
 
 不要只凭退出码 2 断定存在 JSON，需检查 stdout。强制终止或输出过程再次中断不保证完整 JSON。报告包含本机路径、应用信息和卸载命令，分享前应脱敏。
+
+## 位置分类
+
+`--by-location` 仅分类显式扫描范围内已经计入、过滤并硬链接去重后的普通文件，不扫描分类根目录，不读正文，也不推断应用归属或可删除容量。每个非空分组包含 `category`（string）、`logical_bytes`（integer）、`file_count`（integer），按 category 升序。分组字节数/文件数之和分别等于本次扫描 logical_bytes/file_count，包括提前停止的部分结果。
+
+类别为 `program_files`、`program_data`、`app_data`、`other`、`unknown`。Windows 从当前进程的 ProgramFiles、ProgramFiles(x86)、ProgramW6432、ProgramData、APPDATA、LOCALAPPDATA 环境变量读取可用绝对本地路径；不硬编码用户名，也不枚举其他用户配置。采用不解析链接的大小写无关路径段匹配，嵌套根选择最具体的根，同等具体但类别冲突时归 unknown。环境值是当前进程的分类依据，并非系统目录真实性认证。
+
+未匹配路径只有在三类根均至少已知一处时归 other；根不完整、路径无法识别或非 Windows 平台归 unknown。不存在的分类目录不会被访问或推测大小。unknown 不表示扫描失败，不单独改变 partial。跨位置硬链接按扫描中首个被计入的路径归类，只计一次；扫描顺序可能影响分组归属，合计不变。`--app` 仍仅扫描安装目录，不为本功能追加用户数据目录。JSON 扫描对象、CSV 的 stderr 状态、NDJSON summary.report 共用该字段契约。

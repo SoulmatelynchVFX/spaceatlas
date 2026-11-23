@@ -149,3 +149,5 @@ AI 的目标是把扫描事实和规则证据转成简短、具体的解释，�
 ## 许可证
 
 本仓库现有代码使用 [MIT 许可证](LICENSE)。
+
+使用 `--path "D:/Your/Explicit/Folder" --by-location` 可按系统位置分类当前范围内已计入文件；从环境识别位置，保留其他/未知，不额外扫描系统目录或读取正文。详见 [位置分类](docs/storage-inspector.md#按系统位置分类)。

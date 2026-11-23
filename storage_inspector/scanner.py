@@ -10,6 +10,7 @@ import time
 
 from .directory_tree import TreeNode, validate_tree_depth
 from .file_types import load_file_types
+from .locations import LocationClassifier
 from .mtime import MTIME_BUCKETS, format_reference_utc, modification_bucket
 from .path_glob import matches_any, validate_exclude_patterns
 from .ranking import FileCandidate, ranking_options, ranking_report
@@ -62,6 +63,7 @@ class DirectoryStats:
     directory_tree: dict | None = None
     ranking: dict | None = None
     type_summary: list[dict] = field(default_factory=list)
+    location_summary: list[dict] = field(default_factory=list)
 
     @property
     def partial(self):
@@ -174,7 +176,7 @@ def directory_stats(path: Path, *, max_files=None, max_seconds=None, top_files=N
                     exclude_dirs=None, by_extension=False, by_directory=False,
                     on_file=None, max_depth=None, min_size=None,
                     include_ext=None, exclude_ext=None, exclude_patterns=None,
-                    by_mtime=False, tree_depth=None, sort=None, limit=None, by_type=False) -> DirectoryStats:
+                    by_mtime=False, tree_depth=None, sort=None, limit=None, by_type=False, by_location=False) -> DirectoryStats:
     validate_limits(max_files, max_seconds)
     validate_max_depth(max_depth)
     validate_tree_depth(tree_depth)
@@ -215,6 +217,8 @@ def directory_stats(path: Path, *, max_files=None, max_seconds=None, top_files=N
     extensions = {}
     directories = {}
     types = {}
+    locations = {}
+    classifier = LocationClassifier() if by_location else None
     try:
         while stack:
             if deadline is not None and time.monotonic() >= deadline:
@@ -282,6 +286,13 @@ def directory_stats(path: Path, *, max_files=None, max_seconds=None, top_files=N
                         bucket["logical_bytes"] += info.st_size
                     result.logical_bytes += info.st_size
                     result.file_count += 1
+                    if classifier is not None:
+                        category = classifier.classify(current)
+                        group = locations.setdefault(category, {
+                            "category": category, "logical_bytes": 0, "file_count": 0,
+                        })
+                        group["logical_bytes"] += info.st_size
+                        group["file_count"] += 1
                     if type_lookup is not None:
                         category = type_lookup.get(extension, "other")
                         group = types.setdefault(category, {
@@ -352,4 +363,5 @@ def directory_stats(path: Path, *, max_files=None, max_seconds=None, top_files=N
     )
     if ranking is not None:
         result.ranking = ranking_report(ranking, result, ranked_files)
+    result.location_summary = sorted(locations.values(), key=lambda group: group["category"])
     return result
