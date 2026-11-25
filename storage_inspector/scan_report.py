@@ -22,5 +22,6 @@ def format_logical_mib(logical_bytes: int) -> str:
 
 def scan_report(stats: DirectoryStats) -> dict:
     """Add derived presentation fields at the report serialization boundary."""
-    return {**asdict(stats), "partial": stats.partial,
+    return {**asdict(stats), "error_details_omitted": stats.error_details_omitted,
+            "partial": stats.partial,
             "logical_mib": format_logical_mib(stats.logical_bytes)}

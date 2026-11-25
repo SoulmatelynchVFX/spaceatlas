@@ -35,7 +35,9 @@
 | `skipped` | integer | 遇到的链接、离线/召回属性项或特殊文件数；不估算其后代数量。 |
 | `duplicates` | integer | 因文件身份重复而未再次计入的普通文件条目数。 |
 | `error_count` | integer | 扫描读取错误总数，不受明细上限影响。 |
-| `errors` | array of object | 前 100 条扫描错误，结构见“扫描错误”；数组长度可能小于总数。 |
+| `errors` | array of object | 前 max_error_details 条扫描错误，默认最多 100 条，结构见“扫描错误”；数组长度可能小于总数。 |
+| `max_error_details` | integer | 扫描错误明细保留上限，默认 100，非负整数；0 不保留明细。 |
+| `error_details_omitted` | integer | 未保留的扫描错误明细数，始终等于 error_count - len(errors)。 |
 | `stop_reason` | string or null | `max_files`、`max_seconds`、`interrupted`；没有提前停止则为 `null`。 |
 | `max_depth` | integer or null | 用户指定的非负深度上限；根目标深度 0，null 表示无限制。 |
 | `depth_limited_directories` | integer | 因深度达到上限而未打开的普通目录数，包括可能的根目录；不估算其中的文件数/字节数。 |
@@ -299,3 +301,9 @@ CSV 完整退出 0，部分结果或参数错误退出 2，中断退出 130，�
 类别为 `program_files`、`program_data`、`app_data`、`other`、`unknown`。Windows 从当前进程的 ProgramFiles、ProgramFiles(x86)、ProgramW6432、ProgramData、APPDATA、LOCALAPPDATA 环境变量读取可用绝对本地路径；不硬编码用户名，也不枚举其他用户配置。采用不解析链接的大小写无关路径段匹配，嵌套根选择最具体的根，同等具体但类别冲突时归 unknown。环境值是当前进程的分类依据，并非系统目录真实性认证。
 
 未匹配路径只有在三类根均至少已知一处时归 other；根不完整、路径无法识别或非 Windows 平台归 unknown。不存在的分类目录不会被访问或推测大小。unknown 不表示扫描失败，不单独改变 partial。跨位置硬链接按扫描中首个被计入的路径归类，只计一次；扫描顺序可能影响分组归属，合计不变。`--app` 仍仅扫描安装目录，不为本功能追加用户数据目录。JSON 扫描对象、CSV 的 stderr 状态、NDJSON summary.report 共用该字段契约。
+
+## 扫描错误明细上限
+
+`--max-error-details N` 只控制 --path 或 --app 扫描对象中的错误明细，不改变错误总数、扫描范围、是否继续遍历、partial、原有退出码或跳过记录。默认 100 保持既有行为；0 不保留扫描错误路径/消息，但仍计数并返回部分结果。该选项不能用于 --list-apps，也不改变 --app 的 inventory.errors：注册表错误仍采用原固定 100 条上限。扫描无法开始时 scan 仍为 null，已有顶层错误说明也不由此参数隐藏。
+
+error_count 是实际捕获的读取错误事件数，不估算未打开目录的后代条目；同一路径不同事件可能分别计数。新增 error_details_omitted 是明细条数差，不是遗漏文件数。新增字段属于 schema_version 1 的兼容增补。JSON、CSV stderr 状态、NDJSON summary.report 均使用同一扫描对象契约。

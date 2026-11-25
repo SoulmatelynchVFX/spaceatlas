@@ -27,6 +27,11 @@ MAX_ERROR_DETAILS = 100
 MAX_SKIP_DETAILS = 100
 
 
+def validate_max_error_details(value):
+    if type(value) is not int or value < 0:
+        raise ValueError("max-error-details 必须是非负整数")
+
+
 @dataclass
 class DirectoryStats:
     path: str
@@ -64,6 +69,14 @@ class DirectoryStats:
     ranking: dict | None = None
     type_summary: list[dict] = field(default_factory=list)
     location_summary: list[dict] = field(default_factory=list)
+    max_error_details: int = MAX_ERROR_DETAILS
+
+    def __post_init__(self):
+        validate_max_error_details(self.max_error_details)
+
+    @property
+    def error_details_omitted(self):
+        return self.error_count - len(self.errors)
 
     @property
     def partial(self):
@@ -75,7 +88,7 @@ class DirectoryStats:
 
     def record_error(self, path, error):
         self.error_count += 1
-        if len(self.errors) < MAX_ERROR_DETAILS:
+        if len(self.errors) < self.max_error_details:
             self.errors.append({"path": str(path), "message": str(error)})
 
     def record_skip(self, path, reason):
@@ -176,7 +189,9 @@ def directory_stats(path: Path, *, max_files=None, max_seconds=None, top_files=N
                     exclude_dirs=None, by_extension=False, by_directory=False,
                     on_file=None, max_depth=None, min_size=None,
                     include_ext=None, exclude_ext=None, exclude_patterns=None,
-                    by_mtime=False, tree_depth=None, sort=None, limit=None, by_type=False, by_location=False) -> DirectoryStats:
+                    by_mtime=False, tree_depth=None, sort=None, limit=None, by_type=False, by_location=False,
+                    max_error_details=MAX_ERROR_DETAILS) -> DirectoryStats:
+    validate_max_error_details(max_error_details)
     validate_limits(max_files, max_seconds)
     validate_max_depth(max_depth)
     validate_tree_depth(tree_depth)
@@ -194,7 +209,8 @@ def directory_stats(path: Path, *, max_files=None, max_seconds=None, top_files=N
     root = Path(os.path.abspath(path))
     result = DirectoryStats(str(root), exclude_dirs=excluded_names, max_depth=max_depth,
                             min_size=min_size, include_ext=included_exts, exclude_ext=excluded_exts,
-                            exclude_patterns=normalized_patterns, tree_depth=tree_depth)
+                            exclude_patterns=normalized_patterns, tree_depth=tree_depth,
+                            max_error_details=max_error_details)
     tree = TreeNode(root.name or str(root)) if tree_depth is not None else None
     reference_ns = time.time_ns() if by_mtime else None
     if reference_ns is not None:

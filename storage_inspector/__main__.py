@@ -14,7 +14,7 @@ from .scanner import directory_stats, validate_limits, validate_top_files, valid
 from .windows_inventory import discover_inventory
 from .report_output import ReportOutput, ReportOutputError
 from .scan_report import SCAN_NOTE, scan_report
-from .scanner import validate_max_depth, parse_min_size, validate_extension_filters
+from .scanner import validate_max_error_details, validate_max_depth, parse_min_size, validate_extension_filters
 from .path_glob import validate_exclude_patterns
 from .ranking import ranking_options
 from .file_types import load_file_types
@@ -29,6 +29,7 @@ def _main(argv=None):
     action.add_argument("--list-apps", action="store_true", help="读取 Windows 卸载注册表，不扫描目录")
     action.add_argument("--path", type=Path, help="只统计指定文件或目录的逻辑字节数")
     action.add_argument("--app", metavar="APP_ID", help="按清单 ID 只统计该应用声明的安装目录")
+    parser.add_argument("--max-error-details", type=int, help="扫描错误明细上限，默认 100；0 只保留总数")
     parser.add_argument("--max-files", type=int, help="扫描至多计入指定数量的文件，必须为正整数")
     parser.add_argument("--max-seconds", type=float, help="扫描时长软限制（秒），必须为有限正数")
     parser.add_argument("--max-depth", type=int, help="扫描深度硬上限（非负整数）；根为 0，边界目录不展开")
@@ -62,6 +63,8 @@ def _main(argv=None):
     if args.force and args.output is None:
         parser.error("--force 必须与 --output 同时使用")
     try:
+        if args.max_error_details is not None:
+            validate_max_error_details(args.max_error_details)
         validate_limits(args.max_files, args.max_seconds)
         validate_max_depth(args.max_depth)
         validate_tree_depth(args.tree_depth)
@@ -87,6 +90,8 @@ def _main(argv=None):
                 parser.error(f"--format csv 不能与 {option} 同时使用")
     if args.list_apps and (args.max_files is not None or args.max_seconds is not None or args.max_depth is not None):
         parser.error("扫描限制仅用于 --path 或 --app，不能用于 --list-apps")
+    if args.list_apps and args.max_error_details is not None:
+        parser.error("--max-error-details 仅用于 --path 或 --app 的扫描错误")
     if args.list_apps and args.top_files is not None:
         parser.error("--top-files 仅用于 --path 或 --app，不能用于 --list-apps")
     if args.list_apps and (args.sort is not None or args.limit is not None):
@@ -133,6 +138,8 @@ def _render(args, inventory, excluded_names, output):
     ndjson_output = NdjsonFileWriter(output, SCHEMA_VERSION) if args.format == "ndjson" else None
     file_output = csv_output if csv_output is not None else ndjson_output
     scan_options = {"on_file": file_output.write_file} if file_output is not None else {}
+    if args.max_error_details is not None:
+        scan_options["max_error_details"] = args.max_error_details
     if args.max_depth is not None:
         scan_options["max_depth"] = args.max_depth
     if args.min_size is not None:

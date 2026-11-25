@@ -7,7 +7,7 @@ import stat
 from .scanner import directory_stats, should_skip, validate_limits, validate_top_files, validate_exclude_dirs
 from .windows_inventory import InventoryResult
 from .scan_report import SCAN_NOTE, scan_report
-from .scanner import validate_max_depth, validate_min_size, validate_extension_filters
+from .scanner import MAX_ERROR_DETAILS, validate_max_error_details, validate_max_depth, validate_min_size, validate_extension_filters
 from .path_glob import validate_exclude_patterns
 from .directory_tree import validate_tree_depth
 from .ranking import ranking_options
@@ -31,7 +31,8 @@ def inspect_app(inventory: InventoryResult, app_id: str, *, max_files=None, max_
                 top_files=None, exclude_dirs=None, by_extension=False, by_directory=False,
                 on_file=None, max_depth=None, min_size=None, include_ext=None, exclude_ext=None,
                 exclude_patterns=None, by_mtime=False, tree_depth=None, sort=None, limit=None,
-                by_type=False, by_location=False) -> dict:
+                by_type=False, by_location=False, max_error_details=MAX_ERROR_DETAILS) -> dict:
+    validate_max_error_details(max_error_details)
     validate_limits(max_files, max_seconds)
     validate_max_depth(max_depth)
     validate_tree_depth(tree_depth)
@@ -77,6 +78,8 @@ def inspect_app(inventory: InventoryResult, app_id: str, *, max_files=None, max_
     stats = directory_stats(path, max_files=max_files, max_seconds=max_seconds,
                             top_files=top_files, exclude_dirs=excluded_names, by_extension=by_extension,
                             by_directory=by_directory,
+                            **({"max_error_details": max_error_details}
+                               if max_error_details != MAX_ERROR_DETAILS else {}),
                             **({"by_location": True} if by_location else {}),
                             **({"by_type": True} if by_type else {}),
                             **({"by_mtime": True} if by_mtime else {}),
