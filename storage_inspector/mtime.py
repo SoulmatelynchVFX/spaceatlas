@@ -11,6 +11,15 @@ MAX_UTC_NS = ((datetime.max.replace(tzinfo=timezone.utc) - EPOCH).days + 1) * DA
 MTIME_BUCKETS = ("lt_30d", "30_to_lt_180d", "180_to_365d", "gt_365d", "future", "unknown")
 
 
+def format_modified_utc(info) -> str | None:
+    """Format a file timestamp without relying on the platform's time_t range."""
+    try:
+        modified = EPOCH + timedelta(seconds=info.st_mtime)
+    except (AttributeError, TypeError, ValueError, OverflowError, OSError):
+        return None
+    return modified.isoformat(timespec="microseconds").replace("+00:00", "Z")
+
+
 def format_reference_utc(reference_ns: int) -> str:
     seconds, nanoseconds = divmod(reference_ns, NS_PER_SECOND)
     whole = EPOCH + timedelta(seconds=seconds)

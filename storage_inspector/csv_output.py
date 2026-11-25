@@ -1,7 +1,8 @@
 """Stream metadata rows separately from the versioned diagnostic report."""
 import csv
-from datetime import datetime, timezone
 import json
+
+from .mtime import format_modified_utc
 
 
 class CsvOutputError(RuntimeError):
@@ -26,10 +27,8 @@ class CsvFileWriter:
             raise CsvOutputError(str(error)) from error
 
     def write_file(self, path, info):
-        try:
-            modified = datetime.fromtimestamp(info.st_mtime, timezone.utc).isoformat(
-                timespec="microseconds").replace("+00:00", "Z")
-        except (AttributeError, TypeError, ValueError, OverflowError, OSError):
+        modified = format_modified_utc(info)
+        if modified is None:
             modified = ""
             self.missing_modified += 1
         try:

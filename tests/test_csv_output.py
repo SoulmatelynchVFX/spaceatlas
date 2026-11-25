@@ -70,6 +70,16 @@ class CsvOutputTests(unittest.TestCase):
             self.assertTrue(report["partial"])
             self.assertEqual(report["csv"]["missing_modified"], 1)
 
+    def test_pre_epoch_mtime_is_exported_as_utc(self):
+        info = SimpleNamespace(st_mode=stat.S_IFREG, st_dev=1, st_ino=1,
+                               st_size=3, st_mtime=-0.5)
+        with patch.object(Path, "lstat", return_value=info):
+            status, rows, report = self.run_csv(["--path", "sample.txt"])
+        self.assertEqual(status, 0)
+        self.assertEqual(rows[1][2], "1969-12-31T23:59:59.500000Z")
+        self.assertFalse(report["partial"])
+        self.assertEqual(report["csv"]["missing_modified"], 0)
+
     def test_incompatible_options_fail_before_scan_or_header(self):
         cases = [["--list-apps"], ["--path", ".", "--by-extension"],
                  ["--path", ".", "--by-directory"], ["--path", ".", "--top-files", "2"]]

@@ -78,6 +78,16 @@ class NdjsonOutputTests(unittest.TestCase):
             self.assertTrue(report["partial"])
             self.assertEqual(report["ndjson"]["missing_modified"], 1)
 
+    def test_pre_epoch_mtime_is_exported_as_utc(self):
+        info = SimpleNamespace(st_mode=stat.S_IFREG, st_dev=1, st_ino=1,
+                               st_size=3, st_mtime=-0.5)
+        with patch.object(Path, "lstat", return_value=info):
+            status, files, report = self.run_stream(["--path", "synthetic"])
+        self.assertEqual(status, 0)
+        self.assertEqual(files[0]["modified"], "1969-12-31T23:59:59.500000Z")
+        self.assertFalse(report["partial"])
+        self.assertEqual(report["ndjson"]["missing_modified"], 0)
+
     def test_invalid_options_emit_nothing_and_do_not_scan(self):
         for args in (["--list-apps"], ["--path", ".", "--max-files", "0"]):
             output, errors = io.StringIO(), io.StringIO()

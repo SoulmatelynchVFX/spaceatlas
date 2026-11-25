@@ -1,6 +1,7 @@
 """Emit metadata events immediately, followed by a versioned scan summary."""
-from datetime import datetime, timezone
 import json
+
+from .mtime import format_modified_utc
 
 
 class NdjsonOutputError(RuntimeError):
@@ -33,11 +34,8 @@ class NdjsonFileWriter:
             raise NdjsonOutputError(str(error)) from error
 
     def write_file(self, path, info):
-        try:
-            modified = datetime.fromtimestamp(info.st_mtime, timezone.utc).isoformat(
-                timespec="microseconds").replace("+00:00", "Z")
-        except (AttributeError, TypeError, ValueError, OverflowError, OSError):
-            modified = None
+        modified = format_modified_utc(info)
+        if modified is None:
             self.missing_modified += 1
         self._emit({"event": "file", "path": str(path), "size": info.st_size,
                     "modified": modified})
