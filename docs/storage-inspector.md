@@ -346,3 +346,17 @@ python -m storage_inspector --path "D:/Your/Explicit/Folder" --max-error-details
 默认最多保留前 100 条 errors；--max-error-details 接受非负整数，0 可只保留扫描错误总数而不保留明细。不论明细是否保留，error_count 始终累计捕获的错误事件，error_details_omitted = error_count - len(errors)。扫描继续处理可访问项，partial 和退出码保持原义：读取错误通常返回 2，中断仍返回 130。这不是忽略错误或提前停止扫描的选项。
 
 支持 --path 与 --app 的 JSON/CSV/NDJSON 和安全导出。--app 中注册表 inventory.errors、无法开始扫描时的顶层错误、以及 skip_details 不受影响；不能用于 --list-apps。上限只控制扫描明细数量，不是文件数上限或整个程序的内存上限；调大时会保留更多路径/消息，分享前仍需脱敏。未打开目录的未知后代不会被估算成错误条数。
+
+## 可选扫描进度
+
+```powershell
+python -m storage_inspector --path "D:/Your/Explicit/Folder" --progress
+```
+
+默认不输出进度；开启后向 stderr 写入 `progress ` 前缀加单行 JSON，逐行刷新。首次通知给出扫描中状态，后续普通通知至多每秒一次，扫描正常结束、触限或中断时另发最终通知。极短扫描也可能只看到起始与最终两行。通知只在遍历推进时检查，不会为卡住的系统调用另启线程刷新。
+
+每行包含 state（scanning/finished）、file_count、logical_bytes、error_count、skipped、duplicates、partial 和 stop_reason。数量来自同一次扫描的已观测状态，不预先计数、不二次扫描，不显示总量、百分比、路径或剩余时间。finished 表示遍历结束或停止，并不保证完整成功，须检查 partial、stop_reason 和程序退出码。应用模式仅通知安装目录扫描，不含注册表枚举进度；拒绝扫描时没有进度，--list-apps 不接受此选项。
+
+stdout 的 JSON、CSV、NDJSON 格式保持原样，--output 文件也不包含进度。CSV 本来在 stderr 输出最终 JSON 状态；开启进度后，应区分带 progress 前缀的行与无前缀的最终状态，不再将整个 stderr 当一份 JSON。NDJSON 的完整性仍以 stdout 的 summary 事件和退出码为准，不能以 stderr 的 finished 代替最终报告。
+
+进度诊断写入失败时返回 1，不将它算作源文件访问错误；安全导出不提交这份新报告，原文件保留。不自动重试或写入其他位置。

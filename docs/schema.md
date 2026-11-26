@@ -307,3 +307,9 @@ CSV 完整退出 0，部分结果或参数错误退出 2，中断退出 130，�
 `--max-error-details N` 只控制 --path 或 --app 扫描对象中的错误明细，不改变错误总数、扫描范围、是否继续遍历、partial、原有退出码或跳过记录。默认 100 保持既有行为；0 不保留扫描错误路径/消息，但仍计数并返回部分结果。该选项不能用于 --list-apps，也不改变 --app 的 inventory.errors：注册表错误仍采用原固定 100 条上限。扫描无法开始时 scan 仍为 null，已有顶层错误说明也不由此参数隐藏。
 
 error_count 是实际捕获的读取错误事件数，不估算未打开目录的后代条目；同一路径不同事件可能分别计数。新增 error_details_omitted 是明细条数差，不是遗漏文件数。新增字段属于 schema_version 1 的兼容增补。JSON、CSV stderr 状态、NDJSON summary.report 均使用同一扫描对象契约。
+
+## 可选进度诊断与报告的分离
+
+`--progress` 是 stderr 上的独立诊断流，不改变 schema_version 1 的报告字段，不写入 --output。其行格式为 `progress {JSON}`，JSON 含 state、file_count、logical_bytes、error_count、skipped、duplicates、partial、stop_reason。计数和字节数来自当前扫描状态；state 为 scanning 或 finished，finished 不代表报告输出成功或扫描完整。报告、NDJSON summary 和退出码仍为最终结果依据。
+
+普通更新至多每秒一次，最终更新无条件发送；仅在扫描循环推进时触发，不预扫总量、不承诺阻塞期间更新。CSV stderr 的无前缀最终 JSON 状态在进度行之后输出。默认关闭时不增加任何进度行；使用方式与失败边界见 storage-inspector.md。

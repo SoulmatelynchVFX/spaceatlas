@@ -18,6 +18,7 @@ from .scanner import validate_max_error_details, validate_max_depth, parse_min_s
 from .path_glob import validate_exclude_patterns
 from .ranking import ranking_options
 from .file_types import load_file_types
+from .progress import ProgressReporter, ProgressOutputError
 
 
 SCHEMA_VERSION = 1
@@ -29,6 +30,7 @@ def _main(argv=None):
     action.add_argument("--list-apps", action="store_true", help="读取 Windows 卸载注册表，不扫描目录")
     action.add_argument("--path", type=Path, help="只统计指定文件或目录的逻辑字节数")
     action.add_argument("--app", metavar="APP_ID", help="按清单 ID 只统计该应用声明的安装目录")
+    parser.add_argument("--progress", action="store_true", help="向 stderr 输出扫描进度，默认关闭")
     parser.add_argument("--max-error-details", type=int, help="扫描错误明细上限，默认 100；0 只保留总数")
     parser.add_argument("--max-files", type=int, help="扫描至多计入指定数量的文件，必须为正整数")
     parser.add_argument("--max-seconds", type=float, help="扫描时长软限制（秒），必须为有限正数")
@@ -90,6 +92,8 @@ def _main(argv=None):
                 parser.error(f"--format csv 不能与 {option} 同时使用")
     if args.list_apps and (args.max_files is not None or args.max_seconds is not None or args.max_depth is not None):
         parser.error("扫描限制仅用于 --path 或 --app，不能用于 --list-apps")
+    if args.list_apps and args.progress:
+        parser.error("--progress 仅用于 --path 或 --app 的目录扫描")
     if args.list_apps and args.max_error_details is not None:
         parser.error("--max-error-details 仅用于 --path 或 --app 的扫描错误")
     if args.list_apps and args.top_files is not None:
@@ -138,6 +142,8 @@ def _render(args, inventory, excluded_names, output):
     ndjson_output = NdjsonFileWriter(output, SCHEMA_VERSION) if args.format == "ndjson" else None
     file_output = csv_output if csv_output is not None else ndjson_output
     scan_options = {"on_file": file_output.write_file} if file_output is not None else {}
+    if args.progress:
+        scan_options["on_progress"] = ProgressReporter(sys.stderr).update
     if args.max_error_details is not None:
         scan_options["max_error_details"] = args.max_error_details
     if args.max_depth is not None:
@@ -204,6 +210,9 @@ def _render(args, inventory, excluded_names, output):
 def main(argv=None):
     try:
         return _main(argv)
+    except ProgressOutputError:
+        # The diagnostics stream may itself be broken; do not write to it again.
+        return 1
     except ReportOutputError as error:
         print(f"报告保存失败：{error}", file=sys.stderr)
         return 1

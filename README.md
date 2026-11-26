@@ -153,3 +153,5 @@ AI 的目标是把扫描事实和规则证据转成简短、具体的解释，�
 使用 `--path "D:/Your/Explicit/Folder" --by-location` 可按系统位置分类当前范围内已计入文件；从环境识别位置，保留其他/未知，不额外扫描系统目录或读取正文。详见 [位置分类](docs/storage-inspector.md#按系统位置分类)。
 
 `--max-error-details N` 控制指定范围的扫描错误明细上限（默认 100，0 仅保留总数）；报告同时给出 `error_details_omitted`，错误总数、部分结果与退出码不受明细上限影响，详见 [扫描错误明细](docs/storage-inspector.md#控制扫描错误明细)。
+
+`--progress` 可将已计入文件数、逻辑字节数及错误/跳过等计数输出到 stderr，默认关闭；不预扫总量、不显示百分比，stdout 报告保持原格式。CSV 使用者需区分带 `progress ` 前缀的行和最终状态，详见 [扫描进度](docs/storage-inspector.md#可选扫描进度)。

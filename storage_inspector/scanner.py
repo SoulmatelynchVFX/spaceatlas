@@ -190,7 +190,7 @@ def directory_stats(path: Path, *, max_files=None, max_seconds=None, top_files=N
                     on_file=None, max_depth=None, min_size=None,
                     include_ext=None, exclude_ext=None, exclude_patterns=None,
                     by_mtime=False, tree_depth=None, sort=None, limit=None, by_type=False, by_location=False,
-                    max_error_details=MAX_ERROR_DETAILS) -> DirectoryStats:
+                    max_error_details=MAX_ERROR_DETAILS, on_progress=None) -> DirectoryStats:
     validate_max_error_details(max_error_details)
     validate_limits(max_files, max_seconds)
     validate_max_depth(max_depth)
@@ -237,6 +237,8 @@ def directory_stats(path: Path, *, max_files=None, max_seconds=None, top_files=N
     classifier = LocationClassifier() if by_location else None
     try:
         while stack:
+            if on_progress is not None:
+                on_progress(result)
             if deadline is not None and time.monotonic() >= deadline:
                 result.stop_reason = "max_seconds"
                 break
@@ -380,4 +382,6 @@ def directory_stats(path: Path, *, max_files=None, max_seconds=None, top_files=N
     if ranking is not None:
         result.ranking = ranking_report(ranking, result, ranked_files)
     result.location_summary = sorted(locations.values(), key=lambda group: group["category"])
+    if on_progress is not None:
+        on_progress(result, finished=True)
     return result

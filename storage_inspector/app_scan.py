@@ -31,7 +31,7 @@ def inspect_app(inventory: InventoryResult, app_id: str, *, max_files=None, max_
                 top_files=None, exclude_dirs=None, by_extension=False, by_directory=False,
                 on_file=None, max_depth=None, min_size=None, include_ext=None, exclude_ext=None,
                 exclude_patterns=None, by_mtime=False, tree_depth=None, sort=None, limit=None,
-                by_type=False, by_location=False, max_error_details=MAX_ERROR_DETAILS) -> dict:
+                by_type=False, by_location=False, max_error_details=MAX_ERROR_DETAILS, on_progress=None) -> dict:
     validate_max_error_details(max_error_details)
     validate_limits(max_files, max_seconds)
     validate_max_depth(max_depth)
@@ -80,6 +80,7 @@ def inspect_app(inventory: InventoryResult, app_id: str, *, max_files=None, max_
                             by_directory=by_directory,
                             **({"max_error_details": max_error_details}
                                if max_error_details != MAX_ERROR_DETAILS else {}),
+                            **({"on_progress": on_progress} if on_progress is not None else {}),
                             **({"by_location": True} if by_location else {}),
                             **({"by_type": True} if by_type else {}),
                             **({"by_mtime": True} if by_mtime else {}),
